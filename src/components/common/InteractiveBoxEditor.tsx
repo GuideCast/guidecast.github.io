@@ -38,6 +38,11 @@ export interface InteractiveBoxEditorProps {
   showCursor?: boolean;
   showHandles?: boolean;
   overlayChildren?: React.ReactNode;
+  /**
+   * If true, fits image inside a fixed-height container using letterbox/pillarbox (e.g. for small PiP window).
+   * If false (default), image is 100% full width with auto height and zero black side bars!
+   */
+  fitContainerHeight?: boolean;
 }
 
 type DragState =
@@ -141,6 +146,7 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
   showCursor = true,
   showHandles = true,
   overlayChildren,
+  fitContainerHeight = false,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
@@ -175,14 +181,24 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
     }
   }, [cursorPos, box, dragState.type]);
 
-  // Compute rendered image bounds within container (accounting for letterbox/pillarbox)
+  // Compute rendered image bounds within container (accounting for letterbox/pillarbox when fitContainerHeight is true)
   const updateRenderRect = useCallback(() => {
     if (!containerRef.current) return;
     const container = containerRef.current;
     const cWidth = container.clientWidth || container.getBoundingClientRect().width;
     const cHeight = container.clientHeight || container.getBoundingClientRect().height;
-    if (!cWidth || !cHeight) return;
+    if (!cWidth) return;
 
+    if (!fitContainerHeight) {
+      // 100% width zero-pillarbox mode: image fills 100% width of container with auto height
+      const natW = naturalSize.width || imageRef.current?.naturalWidth || 0;
+      const natH = naturalSize.height || imageRef.current?.naturalHeight || 0;
+      const computedH = natW && natH ? (cWidth * natH) / natW : (imageRef.current?.clientHeight || cHeight);
+      setRenderRect({ left: 0, top: 0, width: cWidth, height: computedH });
+      return;
+    }
+
+    if (!cHeight) return;
     const natW = naturalSize.width || imageRef.current?.naturalWidth || 0;
     const natH = naturalSize.height || imageRef.current?.naturalHeight || 0;
 
@@ -212,7 +228,7 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
     }
 
     setRenderRect({ left, top, width: w, height: h });
-  }, [naturalSize]);
+  }, [naturalSize, fitContainerHeight]);
 
   // Handle image load to get natural dimensions
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -252,7 +268,7 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
 
   // --- Handlers: Move Target Box ---
   const handleBoxMovePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (readOnly || !activeBox) return;
+    if (readOnly || !activeBox || e.button !== 0) return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
 
@@ -267,11 +283,15 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
   };
 
   const handleBoxMovePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (dragState.type !== 'move_box' || renderRect.width === 0 || renderRect.height === 0) return;
+    if (dragState.type !== 'move_box') return;
+    const rect = overlayRef.current?.getBoundingClientRect();
+    const rectW = rect?.width || renderRect.width;
+    const rectH = rect?.height || renderRect.height;
+    if (!rectW || !rectH) return;
     e.stopPropagation();
 
-    const deltaPctX = ((e.clientX - dragState.startClientX) / renderRect.width) * 100;
-    const deltaPctY = ((e.clientY - dragState.startClientY) / renderRect.height) * 100;
+    const deltaPctX = ((e.clientX - dragState.startClientX) / rectW) * 100;
+    const deltaPctY = ((e.clientY - dragState.startClientY) / rectH) * 100;
 
     let newX = Math.round((dragState.startBox.x + deltaPctX) * 10) / 10;
     let newY = Math.round((dragState.startBox.y + deltaPctY) * 10) / 10;
@@ -313,7 +333,7 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
     e: React.PointerEvent<HTMLDivElement>,
     handle: 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
   ) => {
-    if (readOnly || !activeBox) return;
+    if (readOnly || !activeBox || e.button !== 0) return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
 
@@ -334,11 +354,15 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
   };
 
   const handleResizePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (dragState.type !== 'resize_box' || renderRect.width === 0 || renderRect.height === 0) return;
+    if (dragState.type !== 'resize_box') return;
+    const rect = overlayRef.current?.getBoundingClientRect();
+    const rectW = rect?.width || renderRect.width;
+    const rectH = rect?.height || renderRect.height;
+    if (!rectW || !rectH) return;
     e.stopPropagation();
 
-    const deltaPctX = ((e.clientX - dragState.startClientX) / renderRect.width) * 100;
-    const deltaPctY = ((e.clientY - dragState.startClientY) / renderRect.height) * 100;
+    const deltaPctX = ((e.clientX - dragState.startClientX) / rectW) * 100;
+    const deltaPctY = ((e.clientY - dragState.startClientY) / rectH) * 100;
 
     const x0 = dragState.startBox.x;
     const y0 = dragState.startBox.y;
@@ -450,7 +474,7 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
     index: number,
     b: BoxRect
   ) => {
-    if (readOnly) return;
+    if (readOnly || e.button !== 0) return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
 
@@ -466,11 +490,15 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
   };
 
   const handleBlurPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (dragState.type !== 'move_blur' || renderRect.width === 0 || renderRect.height === 0) return;
+    if (dragState.type !== 'move_blur') return;
+    const rect = overlayRef.current?.getBoundingClientRect();
+    const rectW = rect?.width || renderRect.width;
+    const rectH = rect?.height || renderRect.height;
+    if (!rectW || !rectH) return;
     e.stopPropagation();
 
-    const deltaPctX = ((e.clientX - dragState.startClientX) / renderRect.width) * 100;
-    const deltaPctY = ((e.clientY - dragState.startClientY) / renderRect.height) * 100;
+    const deltaPctX = ((e.clientX - dragState.startClientX) / rectW) * 100;
+    const deltaPctY = ((e.clientY - dragState.startClientY) / rectH) * 100;
 
     let newX = Math.round((dragState.startBox.x + deltaPctX) * 10) / 10;
     let newY = Math.round((dragState.startBox.y + deltaPctY) * 10) / 10;
@@ -505,7 +533,7 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
 
   // --- Handlers: Drag Cursor Pointer ---
   const handleCursorPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (readOnly) return;
+    if (readOnly || e.button !== 0) return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
 
@@ -555,7 +583,7 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
 
   // --- Handlers: Draw New Box on Overlay Background ---
   const handleOverlayPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (readOnly || drawMode === 'none' || !overlayRef.current) return;
+    if (readOnly || drawMode === 'none' || !overlayRef.current || e.button !== 0) return;
     e.currentTarget.setPointerCapture(e.pointerId);
 
     const overlayRect = overlayRef.current.getBoundingClientRect();
@@ -666,7 +694,10 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`relative w-full h-full flex items-center justify-center overflow-hidden select-none ${className}`}
+      onContextMenu={(e) => e.preventDefault()}
+      className={`relative w-full select-none ${
+        fitContainerHeight ? 'h-full flex items-center justify-center overflow-hidden' : ''
+      } ${className}`}
       style={style}
     >
       {/* Background Image */}
@@ -675,7 +706,11 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
         src={imageUrl}
         alt="Captured frame"
         onLoad={handleImageLoad}
-        className="w-full h-full object-contain pointer-events-none select-none"
+        className={
+          fitContainerHeight
+            ? 'w-full h-full object-contain pointer-events-none select-none'
+            : 'block w-full h-auto pointer-events-none select-none'
+        }
       />
 
       {/* Rendered Overlay Frame (exact pixel match with image) */}
@@ -685,12 +720,22 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
         onPointerMove={handleOverlayPointerMove}
         onPointerUp={handleOverlayPointerUp}
         onPointerCancel={() => setDragState({ type: 'none' })}
+        onContextMenu={(e) => e.preventDefault()}
         className="absolute overflow-visible select-none cursor-crosshair"
         style={{
-          left: `${renderRect.left}px`,
-          top: `${renderRect.top}px`,
-          width: `${renderRect.width}px`,
-          height: `${renderRect.height}px`,
+          ...(fitContainerHeight
+            ? {
+                left: `${renderRect.left}px`,
+                top: `${renderRect.top}px`,
+                width: `${renderRect.width}px`,
+                height: `${renderRect.height}px`,
+              }
+            : {
+                left: 0,
+                top: 0,
+                width: '100%',
+                height: '100%',
+              }),
           touchAction: 'none',
         }}
       >

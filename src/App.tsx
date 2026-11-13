@@ -1546,6 +1546,78 @@ function StepEditorPanel({
   // Zoom & Canvas Height Expansion
   const [zoom, setZoom] = useState<number>(100);
   const [isTallCanvas, setIsTallCanvas] = useState<boolean>(false);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const [isPanning, setIsPanning] = useState<boolean>(false);
+  const panStateRef = useRef<{ isPanning: boolean; lastX: number; lastY: number }>({
+    isPanning: false,
+    lastX: 0,
+    lastY: 0,
+  });
+
+  // Right-Click Drag to Pan Screen
+  const handleViewportPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button === 2) {
+      e.preventDefault();
+      panStateRef.current = {
+        isPanning: true,
+        lastX: e.clientX,
+        lastY: e.clientY,
+      };
+      setIsPanning(true);
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
+  };
+
+  const handleViewportPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!panStateRef.current.isPanning) return;
+    e.preventDefault();
+    const deltaX = e.clientX - panStateRef.current.lastX;
+    const deltaY = e.clientY - panStateRef.current.lastY;
+    panStateRef.current.lastX = e.clientX;
+    panStateRef.current.lastY = e.clientY;
+
+    const vp = viewportRef.current;
+    if (vp) {
+      const prevScrollTop = vp.scrollTop;
+      vp.scrollLeft -= deltaX;
+      vp.scrollTop -= deltaY;
+
+      // If viewport has no vertical overflow or reached boundary, pan window vertically
+      const scrolledY = Math.abs(vp.scrollTop - prevScrollTop);
+      if (scrolledY < 1 && (vp.scrollHeight <= vp.clientHeight || deltaY !== 0)) {
+        window.scrollBy(-deltaX, -deltaY);
+      }
+    }
+  };
+
+  const handleViewportPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (panStateRef.current.isPanning) {
+      panStateRef.current.isPanning = false;
+      setIsPanning(false);
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    }
+  };
+
+  // Ctrl + Mouse Wheel Smooth Zoom
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const step = e.deltaY < 0 ? 10 : -10;
+        setZoom((prevZoom) => Math.max(100, Math.min(300, prevZoom + step)));
+      }
+    };
+
+    vp.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      vp.removeEventListener('wheel', handleWheel);
+    };
+  }, []);
 
   // Voice Dictation
   const [isDictating, setIsDictating] = useState<boolean>(false);
@@ -2003,12 +2075,21 @@ function StepEditorPanel({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Zoom Buttons Group */}
+          {/* Zoom Buttons Group: 100%, 125%, 150%, 200%, 250% + Ctrl+Wheel */}
           <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
             <span className="text-[10px] font-semibold text-slate-500 px-1">
               {uiLang === 'en' ? '🔍 Zoom:' : '🔍 Масштаб:'}
             </span>
-            {[100, 140, 180, 220].map((z) => (
+            <button
+              type="button"
+              onClick={() => setZoom((z) => Math.max(100, z - 25))}
+              disabled={zoom <= 100}
+              className="w-5 h-5 flex items-center justify-center rounded text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 transition"
+              title={uiLang === 'en' ? 'Zoom out (or Ctrl + Wheel down)' : 'Уменьшить (или Ctrl + Колесо вниз)'}
+            >
+              -
+            </button>
+            {[100, 125, 150, 200, 250].map((z) => (
               <button
                 key={z}
                 type="button"
@@ -2023,6 +2104,20 @@ function StepEditorPanel({
                 {z}%
               </button>
             ))}
+            {![100, 125, 150, 200, 250].includes(zoom) && (
+              <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-teal-600 text-white shadow-xs">
+                {zoom}%
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setZoom((z) => Math.min(300, z + 25))}
+              disabled={zoom >= 300}
+              className="w-5 h-5 flex items-center justify-center rounded text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 transition"
+              title={uiLang === 'en' ? 'Zoom in (or Ctrl + Wheel up)' : 'Увеличить (или Ctrl + Колесо вверх)'}
+            >
+              +
+            </button>
           </div>
 
           {/* Tall Canvas Button */}
@@ -2036,8 +2131,8 @@ function StepEditorPanel({
             }`}
             title={
               uiLang === 'en'
-                ? 'Toggle container height between standard (max 68vh) and tall viewport (82vh)'
-                : 'Переключить высоту контейнера между стандартной (max 68vh) и увеличенной (82vh)'
+                ? 'Toggle container height between standard (max 82vh) and tall viewport (92vh)'
+                : 'Переключить высоту контейнера между стандартной (max 82vh) и увеличенной (92vh)'
             }
           >
             <span>↕️</span>
@@ -2065,20 +2160,25 @@ function StepEditorPanel({
         </div>
       </div>
 
-      {/* Visual Canvas stage with InteractiveBoxEditor and Zoom & Height Expand */}
+      {/* Visual Canvas stage with InteractiveBoxEditor, Zero Black Bars & Right-Click Pan */}
       <div
-        className={`relative w-full border border-slate-300 dark:border-slate-700 rounded-xl overflow-auto bg-slate-900/95 dark:bg-slate-950 shadow-inner transition-all duration-200 flex ${
-          isTallCanvas ? 'h-[82vh] max-h-[82vh]' : 'h-[58vh] max-h-[68vh]'
-        }`}
+        ref={viewportRef}
+        onPointerDown={handleViewportPointerDown}
+        onPointerMove={handleViewportPointerMove}
+        onPointerUp={handleViewportPointerUp}
+        onPointerCancel={handleViewportPointerUp}
+        onLostPointerCapture={handleViewportPointerUp}
+        onContextMenu={(e) => e.preventDefault()}
+        className={`relative w-full border border-slate-300 dark:border-slate-700 rounded-xl overflow-auto bg-slate-900/95 dark:bg-slate-950 shadow-inner transition-all duration-150 select-none ${
+          isPanning ? 'cursor-grabbing' : ''
+        } ${isTallCanvas ? 'max-h-[92vh]' : 'max-h-[82vh]'}`}
+        style={{ touchAction: 'none' }}
       >
         <div
-          className="m-auto transition-all duration-150 flex items-center justify-center shrink-0"
+          className="relative transition-[width] duration-150 shrink-0"
           style={{
             width: zoom > 100 ? `${zoom}%` : '100%',
-            height: zoom > 100 ? `${zoom}%` : '100%',
-            minWidth: zoom > 100 ? `${zoom}%` : '100%',
-            minHeight: zoom > 100 ? `${zoom}%` : '100%',
-            aspectRatio: '16/9',
+            minWidth: '100%',
           }}
         >
           {imageUrl ? (
@@ -2104,17 +2204,19 @@ function StepEditorPanel({
               uiLang={uiLang}
             />
           ) : (
-            <div className="py-24 text-slate-500 text-xs">
+            <div className="py-24 text-center text-slate-500 text-xs">
               {uiLang === 'en' ? 'No attached image' : 'Нет привязанного изображения'}
             </div>
           )}
         </div>
       </div>
 
-      <p className="text-[11px] text-slate-400 text-center">
-        {uiLang === 'en'
-          ? '💡 Drag red box to move, pull any of the 8 handles to resize, or drag the ↖ mouse pointer so it never covers button text.'
-          : '💡 Перетаскивайте рамку целиком, тяните за 8 маркеров по краям для изменения размера, или сдвиньте ↖ указатель мыши, чтобы он не закрывал буквы.'}
+      <p className="text-[11px] text-slate-400 dark:text-slate-400 text-center flex flex-wrap items-center justify-center gap-1.5">
+        <span>
+          {uiLang === 'en'
+            ? '🖱️ Left-Click: move/resize box & pointer · Right-Click + Drag: pan screen · Ctrl + Wheel: zoom'
+            : '🖱️ Левая кнопка мыши: рамка и курсор · Правая кнопка мыши (зажать): двигать сам экран · Ctrl + Колесо: масштаб'}
+        </span>
       </p>
 
       {/* Single Unified Instruction field with Quick Action Presets */}

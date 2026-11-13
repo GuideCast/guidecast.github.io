@@ -1279,6 +1279,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
             <div className="relative w-full h-full flex items-center justify-center">
               <InteractiveBoxEditor
                 imageUrl={assetUrls[activeStep.screenshotId]}
+                fitContainerHeight={true}
                 box={activeStep.box}
                 cursorPos={activeStep.cursorPos || computeDefaultCursorPos(activeStep.box)}
                 stepNumber={currentStepNum}
@@ -1938,6 +1939,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
               <div className="relative w-full h-full flex flex-col items-center justify-center">
                 <InteractiveBoxEditor
                   imageUrl={assetUrls[lastCapturedScreenshot.id]}
+                  fitContainerHeight={true}
                   box={activeStep?.box || null}
                   cursorPos={activeStep?.cursorPos || (activeStep?.box ? computeDefaultCursorPos(activeStep.box) : null)}
                   stepNumber={activeStepIndex >= 0 ? activeStepIndex + 1 : undefined}
