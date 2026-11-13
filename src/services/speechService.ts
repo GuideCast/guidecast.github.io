@@ -149,7 +149,7 @@ function cleanTarget(str: string): string {
  * - "Прокрутите вниз до таблицы" -> act: 'scroll', targetName: 'таблицы'
  * - "Click on Export button" -> act: 'click', targetName: 'Export'
  */
-export function parseVoiceIntent(transcript: string, _preferredLang: 'ru' | 'en' = 'ru'): ParsedVoiceStep {
+export function parseVoiceIntent(transcript: string, _preferredLang: 'ru' | 'en' = 'en'): ParsedVoiceStep {
   const raw = transcript.trim();
   const lower = raw.toLowerCase();
 
@@ -161,7 +161,7 @@ export function parseVoiceIntent(transcript: string, _preferredLang: 'ru' | 'en'
     /^(?:введи(?:те)?|напечатай(?:те)?|заполни(?:те)?)(?:\s+(?:текст|значение|в\s+поле|данные))?\s+(.+)$/i
   );
   const typeEnMatch = lower.match(
-    /^(?:type(?:\s+in)?|enter|fill(?:\s+in)?)(?:\s+(?:the|text|value|field))?\s+(.+)$/i
+    /^(?:type(?:\s+in)?|enter|fill(?:\s+in)?|input)(?:\s+(?:the|text|value|field))?\s+(.+)$/i
   );
 
   // 2. SELECT / ВЫБОР
@@ -169,7 +169,7 @@ export function parseVoiceIntent(transcript: string, _preferredLang: 'ru' | 'en'
     /^(?:выбери(?:те)?|открой(?:те)?(?:\s+вкладку))(?:\s+(?:из\s+списка|вкладку|опцию|пункт|раздел))?\s+(.+)$/i
   );
   const selectEnMatch = lower.match(
-    /^(?:select|choose|pick)(?:\s+(?:the|tab|option|item|section))?\s+(.+)$/i
+    /^(?:select|choose|pick|open)(?:\s+(?:the|tab|option|item|section|menu|dropdown))?\s+(.+)$/i
   );
 
   // 3. LOOK / ВНИМАНИЕ
@@ -177,7 +177,7 @@ export function parseVoiceIntent(transcript: string, _preferredLang: 'ru' | 'en'
     /^(?:обрати(?:те)?\s+внимание(?:\s+на)?|посмотри(?:те)?(?:\s+на)?|проверь(?:те)?)(?:\s+(?:блок|поле|статус|значение))?\s+(.+)$/i
   );
   const lookEnMatch = lower.match(
-    /^(?:pay\s+attention\s+to|look\s+at|check|notice)(?:\s+(?:the|field|status|value))?\s+(.+)$/i
+    /^(?:pay\s+attention\s+to|look\s+at|check|notice|note|inspect|observe)(?:\s+(?:the|field|status|value|area|box))?\s+(.+)$/i
   );
 
   // 4. SCROLL / ПРОКРУТКА
@@ -193,7 +193,7 @@ export function parseVoiceIntent(transcript: string, _preferredLang: 'ru' | 'en'
     /^(?:перетащи(?:те)?|перенеси(?:те)?)(?:\s+(?:файл|элемент|объект))?\s*(.*)$/i
   );
   const dragEnMatch = lower.match(
-    /^(?:drag(?:\s+and\s+drop)?|move)(?:\s+(?:the|item|file))?\s*(.*)$/i
+    /^(?:drag(?:\s+and\s+drop)?|move)(?:\s+(?:the|item|file|element))?\s*(.*)$/i
   );
 
   // 6. CLICK / КЛИК
@@ -201,7 +201,7 @@ export function parseVoiceIntent(transcript: string, _preferredLang: 'ru' | 'en'
     /^(?:нажми(?:те)?|кликни(?:те)?|щелкни(?:те)?)(?:\s+(?:на|по))?(?:\s+(?:кнопку|ссылку|значок|иконку|пункт|элемент|вкладку))?\s+(.+)$/i
   );
   const clickEnMatch = lower.match(
-    /^(?:click|press|tap)(?:\s+(?:on|the))?(?:\s+(?:button|link|icon|item|tab))?\s+(.+)$/i
+    /^(?:click(?:\s+on)?|press|tap|hit)(?:\s+(?:on|the|a))?(?:\s+(?:button|link|icon|item|tab|menu))?\s+(.+)$/i
   );
 
   if (typeRuMatch?.[1] || typeEnMatch?.[1]) {
@@ -251,14 +251,14 @@ export function parseVoiceIntent(transcript: string, _preferredLang: 'ru' | 'en'
 export class VoiceDictationController {
   private recognition: any = null;
   private isListeningState = false;
-  private currentLang: 'ru-RU' | 'en-US' = 'ru-RU';
+  private currentLang: 'ru-RU' | 'en-US' = 'en-US';
 
   public onTranscript?: (transcript: string, isFinal: boolean) => void;
   public onParsedStep?: (parsed: ParsedVoiceStep) => void;
   public onError?: (error: string) => void;
   public onStateChange?: (isListening: boolean) => void;
 
-  constructor(lang: 'ru-RU' | 'en-US' = 'ru-RU') {
+  constructor(lang: 'ru-RU' | 'en-US' = 'en-US') {
     this.currentLang = lang;
     this.initRecognition();
   }

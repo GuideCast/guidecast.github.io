@@ -59,7 +59,7 @@ export async function createProject(data?: Partial<GuideProject>): Promise<Guide
     titleRu: data?.titleRu || 'Новое интерактивное руководство',
     subEn: data?.subEn || 'Step-by-step interactive walk-through',
     subRu: data?.subRu || 'Пошаговая интерактивная инструкция',
-    defaultLang: data?.defaultLang || 'ru',
+    defaultLang: data?.defaultLang || 'en',
     globalBlurBoxes: data?.globalBlurBoxes || [],
     steps: data?.steps || [],
     createdAt: now,
@@ -315,7 +315,7 @@ export async function createDemoProject(): Promise<GuideProject> {
     {
       id: generateId(),
       screenshotId: asset1.id,
-      chapterTitle: 'Введение в рабочую область',
+      chapterTitle: 'Workspace Introduction',
       act: 'click',
       box: { x: 15.6, y: 18.5, w: 9.4, h: 4.3 }, // + New Pipeline button
       en: 'In the top toolbar of your workspace, click <b>+ New Pipeline</b> to start the creation wizard.',
@@ -325,7 +325,7 @@ export async function createDemoProject(): Promise<GuideProject> {
     {
       id: generateId(),
       screenshotId: asset1.id,
-      chapterTitle: 'Выбор типа пайплайна',
+      chapterTitle: 'Select Pipeline Type',
       act: 'click',
       box: { x: 39.8, y: 37.5, w: 7.3, h: 3.5 }, // Button "Build now ->" on Ingestion card
       en: 'Locate the <b>Ingestion Pipeline</b> card and click <b>Build now →</b>.',
@@ -335,7 +335,7 @@ export async function createDemoProject(): Promise<GuideProject> {
     {
       id: generateId(),
       screenshotId: asset2.id,
-      chapterTitle: 'Настройка трансформации данных',
+      chapterTitle: 'Configure Data Transformation',
       act: 'click',
       box: { x: 16.9, y: 37.5, w: 7.3, h: 3.5 }, // Button on Dataflow card
       en: 'Next, click <b>Build now →</b> inside <b>Cloud Dataflow ETL</b> to add data cleaning steps.',
@@ -345,7 +345,7 @@ export async function createDemoProject(): Promise<GuideProject> {
     {
       id: generateId(),
       screenshotId: asset2.id,
-      chapterTitle: 'Завершение обзора',
+      chapterTitle: 'Completion & Summary',
       act: 'look',
       box: { x: 15.6, y: 10.5, w: 30.0, h: 6.5 },
       en: 'Notice that your settings have been preserved. You are ready to run the pipeline.',
@@ -362,7 +362,7 @@ export async function createDemoProject(): Promise<GuideProject> {
     titleRu: 'Как создать пайплайн загрузки данных в аналитической системе',
     subEn: 'Step-by-step interactive walk-through with training mode.',
     subRu: 'Пошаговый интерактивный тренажёр и руководство.',
-    defaultLang: 'ru',
+    defaultLang: 'en',
     globalBlurBoxes: [],
     steps,
     createdAt: now,

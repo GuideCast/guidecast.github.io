@@ -41,6 +41,7 @@ export interface AiAndPrivacyModalProps {
   screenshots: ScreenshotAsset[];
   activeStep?: GuideStep;
   onUpdateProject: (updates: Partial<GuideProject>) => Promise<void>;
+  uiLang?: 'en' | 'ru';
 }
 
 type ModalTab = 'privacy' | 'batch-ai' | 'gemini-crop';
@@ -52,6 +53,7 @@ export const AiAndPrivacyModal: React.FC<AiAndPrivacyModalProps> = ({
   screenshots,
   activeStep,
   onUpdateProject,
+  uiLang = 'en',
 }) => {
   const [activeTab, setActiveTab] = useState<ModalTab>('privacy');
 
@@ -82,10 +84,12 @@ export const AiAndPrivacyModal: React.FC<AiAndPrivacyModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold tracking-tight">
-                ИИ-Ассистент и Защита Приватности
+                {uiLang === 'en' ? 'AI Assistant & Privacy Protection' : 'ИИ-Ассистент и Защита Приватности'}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Сквозное размытие данных, пакетный перевод без ключей и микро-кропы с экономией токенов
+                {uiLang === 'en'
+                  ? 'Global data blur, keyless batch translation, and token-saving micro-crops'
+                  : 'Сквозное размытие данных, пакетный перевод без ключей и микро-кропы с экономией токенов'}
               </p>
             </div>
           </div>
@@ -93,7 +97,7 @@ export const AiAndPrivacyModal: React.FC<AiAndPrivacyModalProps> = ({
           <button
             onClick={onClose}
             className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-            title="Закрыть (Esc)"
+            title={uiLang === 'en' ? 'Close (Esc)' : 'Закрыть (Esc)'}
           >
             <X className="w-5 h-5" />
           </button>
@@ -110,7 +114,7 @@ export const AiAndPrivacyModal: React.FC<AiAndPrivacyModalProps> = ({
             }`}
           >
             <Shield className="w-4 h-4" />
-            1. 🛡️ Приватность и Сквозной Блюр
+            {uiLang === 'en' ? '1. 🛡️ Privacy & Global Blur' : '1. 🛡️ Приватность и Сквозной Блюр'}
           </button>
 
           <button
@@ -122,7 +126,7 @@ export const AiAndPrivacyModal: React.FC<AiAndPrivacyModalProps> = ({
             }`}
           >
             <Layers className="w-4 h-4" />
-            2. 📋 Пакетный ИИ без ключей (0 токенов)
+            {uiLang === 'en' ? '2. 📋 Keyless Batch AI (0 tokens)' : '2. 📋 Пакетный ИИ без ключей (0 токенов)'}
           </button>
 
           <button
@@ -134,18 +138,18 @@ export const AiAndPrivacyModal: React.FC<AiAndPrivacyModalProps> = ({
             }`}
           >
             <Wand2 className="w-4 h-4" />
-            3. ✨ Авто-описание по микро-кропу (BYOK Gemini)
+            {uiLang === 'en' ? '3. ✨ Auto-describe with Micro-Crop (BYOK Gemini)' : '3. ✨ Авто-описание по микро-кропу (BYOK Gemini)'}
           </button>
         </div>
 
         {/* Tab Content Body */}
         <div className="flex-1 overflow-y-auto p-6">
           {activeTab === 'privacy' && (
-            <PrivacyAndBlurTab project={project} onUpdateProject={onUpdateProject} />
+            <PrivacyAndBlurTab project={project} onUpdateProject={onUpdateProject} uiLang={uiLang} />
           )}
 
           {activeTab === 'batch-ai' && (
-            <BatchAiTab project={project} onUpdateProject={onUpdateProject} />
+            <BatchAiTab project={project} onUpdateProject={onUpdateProject} uiLang={uiLang} />
           )}
 
           {activeTab === 'gemini-crop' && (
@@ -154,6 +158,7 @@ export const AiAndPrivacyModal: React.FC<AiAndPrivacyModalProps> = ({
               screenshots={screenshots}
               initialActiveStep={activeStep}
               onUpdateProject={onUpdateProject}
+              uiLang={uiLang}
             />
           )}
         </div>
@@ -171,9 +176,11 @@ export default AiAndPrivacyModal;
 function PrivacyAndBlurTab({
   project,
   onUpdateProject,
+  uiLang = 'en',
 }: {
   project: GuideProject;
   onUpdateProject: (updates: Partial<GuideProject>) => Promise<void>;
+  uiLang?: 'en' | 'ru';
 }) {
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
@@ -188,10 +195,11 @@ function PrivacyAndBlurTab({
     const updatedBoxes = togglePreset(globalBoxes, preset.box);
     await onUpdateProject({ globalBlurBoxes: updatedBoxes });
     const isNowActive = isPresetActive(updatedBoxes, preset.box);
+    const pName = uiLang === 'en' ? preset.nameEn : preset.nameRu;
     showNotification(
-      isNowActive
-        ? `Включен пресет: "${preset.nameRu}"`
-        : `Отключен пресет: "${preset.nameRu}"`
+      uiLang === 'en'
+        ? (isNowActive ? `Preset enabled: "${pName}"` : `Preset disabled: "${pName}"`)
+        : (isNowActive ? `Включен пресет: "${pName}"` : `Отключен пресет: "${pName}"`)
     );
   }
 
@@ -205,14 +213,29 @@ function PrivacyAndBlurTab({
     if (p2 && !isPresetActive(current, p2.box)) current = [...current, { ...p2.box }];
 
     await onUpdateProject({ globalBlurBoxes: current });
-    showNotification('Рекомендуемый набор пресетов успешно включен!');
+    showNotification(
+      uiLang === 'en'
+        ? 'Recommended presets enabled!'
+        : 'Рекомендуемый набор пресетов успешно включен!'
+    );
   }
 
   async function handleClearAll() {
     if (globalBoxes.length === 0) return;
-    if (!confirm('Очистить все глобальные области размытия?')) return;
+    if (
+      !confirm(
+        uiLang === 'en'
+          ? 'Clear all global blur zones?'
+          : 'Очистить все глобальные области размытия?'
+      )
+    )
+      return;
     await onUpdateProject({ globalBlurBoxes: [] });
-    showNotification('Все глобальные области размытия удалены.');
+    showNotification(
+      uiLang === 'en'
+        ? 'All global blur zones removed.'
+        : 'Все глобальные области размытия удалены.'
+    );
   }
 
   async function handleRemoveBox(idx: number) {
@@ -226,10 +249,12 @@ function PrivacyAndBlurTab({
       <div className="bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 rounded-xl p-4 flex items-start gap-3 text-xs leading-relaxed text-teal-900 dark:text-teal-200">
         <Shield className="w-5 h-5 text-teal-600 shrink-0 mt-0.5" />
         <div>
-          <span className="font-bold">Умное вычитание рамок активно:</span> если на каком-то
-          шаге руководства красная рамка попадает на заблюренную панель, программа автоматически
-          вырежет чёткое окошко вокруг нужной кнопки! Конфиденциальные данные на остальных частях
-          экрана останутся надёжно скрыты.
+          <span className="font-bold">
+            {uiLang === 'en' ? 'Smart Box Carve-out active: ' : 'Умное вычитание рамок активно: '}
+          </span>
+          {uiLang === 'en'
+            ? 'If a red target box overlaps with a blurred zone on any step, the player automatically cuts a crisp transparent window around the interactive button! Sensitive data on the rest of the screen stays securely hidden.'
+            : 'если на каком-то шаге руководства красная рамка попадает на заблюренную панель, программа автоматически вырежет чёткое окошко вокруг нужной кнопки! Конфиденциальные данные на остальных частях экрана останутся надёжно скрыты.'}
         </div>
       </div>
 
@@ -244,10 +269,12 @@ function PrivacyAndBlurTab({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
-            Универсальные пресеты приватности
+            {uiLang === 'en' ? 'Universal Privacy Presets' : 'Универсальные пресеты приватности'}
           </h3>
           <p className="text-xs text-slate-500">
-            Шаблоны для типовых интерфейсов веб-сервисов, облачных панелей и десктопных приложений
+            {uiLang === 'en'
+              ? 'Templates for typical web apps, cloud consoles, and desktop software'
+              : 'Шаблоны для типовых интерфейсов веб-сервисов, облачных панелей и десктопных приложений'}
           </p>
         </div>
 
@@ -257,7 +284,9 @@ function PrivacyAndBlurTab({
             className="bg-teal-600 hover:bg-teal-700 text-white text-xs px-3 py-1.5 rounded-lg font-medium shadow-sm transition flex items-center gap-1.5"
           >
             <Shield className="w-3.5 h-3.5" />
-            Включить рекомендуемый набор (Профиль + Меню)
+            {uiLang === 'en'
+              ? 'Enable Recommended (Profile + Menu)'
+              : 'Включить рекомендуемый набор (Профиль + Меню)'}
           </button>
 
           {globalBoxes.length > 0 && (
@@ -266,7 +295,7 @@ function PrivacyAndBlurTab({
               className="border border-slate-300 dark:border-slate-700 hover:border-red-400 text-slate-600 dark:text-slate-300 hover:text-red-500 text-xs px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              Очистить все
+              {uiLang === 'en' ? 'Clear All' : 'Очистить все'}
             </button>
           )}
         </div>
@@ -299,7 +328,7 @@ function PrivacyAndBlurTab({
                       {active ? <Check className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
                     </span>
                     <h4 className="font-bold text-xs text-slate-900 dark:text-slate-100">
-                      {preset.nameRu}
+                      {uiLang === 'en' ? preset.nameEn : preset.nameRu}
                     </h4>
                   </div>
 
@@ -310,12 +339,12 @@ function PrivacyAndBlurTab({
                         : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
                     }`}
                   >
-                    {active ? 'ВКЛЮЧЕНО' : 'ВЫКЛ'}
+                    {active ? (uiLang === 'en' ? 'ACTIVE' : 'ВКЛЮЧЕНО') : (uiLang === 'en' ? 'OFF' : 'ВЫКЛ')}
                   </span>
                 </div>
 
                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-                  {preset.descriptionRu}
+                  {uiLang === 'en' ? preset.descriptionEn : preset.descriptionRu}
                 </p>
               </div>
 
@@ -324,7 +353,9 @@ function PrivacyAndBlurTab({
                   [x: {preset.box.x}%, y: {preset.box.y}%, w: {preset.box.w}%, h: {preset.box.h}%]
                 </span>
                 <span className="text-teal-600 dark:text-teal-400 font-semibold text-[11px]">
-                  {active ? 'Нажмите для отключения' : 'Нажмите для включения'}
+                  {active
+                    ? (uiLang === 'en' ? 'Click to disable' : 'Нажмите для отключения')
+                    : (uiLang === 'en' ? 'Click to enable' : 'Нажмите для включения')}
                 </span>
               </div>
             </div>
@@ -337,16 +368,22 @@ function PrivacyAndBlurTab({
         <div className="flex items-center justify-between mb-3">
           <h4 className="font-bold text-xs flex items-center gap-2">
             <Layers className="w-4 h-4 text-teal-600" />
-            Активные зоны сквозного размытия ({globalBoxes.length})
+            {uiLang === 'en'
+              ? `Active Global Blur Zones (${globalBoxes.length})`
+              : `Активные зоны сквозного размытия (${globalBoxes.length})`}
           </h4>
           <span className="text-[11px] text-slate-400">
-            Применяются ко всем скриншотам проекта
+            {uiLang === 'en'
+              ? 'Applied to all screenshots in project'
+              : 'Применяются ко всем скриншотам проекта'}
           </span>
         </div>
 
         {globalBoxes.length === 0 ? (
           <p className="text-xs text-slate-400 py-3 text-center">
-            Нет активных зон сквозного размытия. Включите пресеты выше для быстрой защиты данных.
+            {uiLang === 'en'
+              ? 'No active global blur zones. Enable presets above for quick data protection.'
+              : 'Нет активных зон сквозного размытия. Включите пресеты выше для быстрой защиты данных.'}
           </p>
         ) : (
           <div className="space-y-2">
@@ -360,14 +397,14 @@ function PrivacyAndBlurTab({
                     #{idx + 1}
                   </span>
                   <span className="font-mono text-slate-700 dark:text-slate-300">
-                    x: {box.x}%, y: {box.y}%, ширина: {box.w}%, высота: {box.h}%
+                    x: {box.x}%, y: {box.y}%, {uiLang === 'en' ? 'width' : 'ширина'}: {box.w}%, {uiLang === 'en' ? 'height' : 'высота'}: {box.h}%
                   </span>
                 </div>
 
                 <button
                   onClick={() => handleRemoveBox(idx)}
                   className="text-slate-400 hover:text-red-500 p-1 transition"
-                  title="Удалить эту зону"
+                  title={uiLang === 'en' ? 'Remove this zone' : 'Удалить эту зону'}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -387,9 +424,11 @@ function PrivacyAndBlurTab({
 function BatchAiTab({
   project,
   onUpdateProject,
+  uiLang = 'en',
 }: {
   project: GuideProject;
   onUpdateProject: (updates: Partial<GuideProject>) => Promise<void>;
+  uiLang?: 'en' | 'ru';
 }) {
   const [copied, setCopied] = useState<boolean>(false);
   const [showPromptPreview, setShowPromptPreview] = useState<boolean>(false);
@@ -406,15 +445,32 @@ function BatchAiTab({
       await navigator.clipboard.writeText(generatedPrompt);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
-      setStatusMsg({ text: 'Промпт скопирован в буфер обмена! Вставьте его в чат ИИ.' });
+      setStatusMsg({
+        text:
+          uiLang === 'en'
+            ? 'Prompt copied to clipboard! Paste it into your AI chat.'
+            : 'Промпт скопирован в буфер обмена! Вставьте его в чат ИИ.',
+      });
     } catch {
-      setStatusMsg({ text: 'Не удалось скопировать. Выделите текст вручную.', isError: true });
+      setStatusMsg({
+        text:
+          uiLang === 'en'
+            ? 'Could not copy. Select and copy text manually.'
+            : 'Не удалось скопировать. Выделите текст вручную.',
+        isError: true,
+      });
     }
   }
 
   async function handleApplyJson() {
     if (!rawAiResponse.trim()) {
-      setStatusMsg({ text: 'Вставьте JSON-ответ от нейросети в текстовое поле.', isError: true });
+      setStatusMsg({
+        text:
+          uiLang === 'en'
+            ? 'Paste JSON response from AI into the text box.'
+            : 'Вставьте JSON-ответ от нейросети в текстовое поле.',
+        isError: true,
+      });
       return;
     }
 
@@ -428,7 +484,10 @@ function BatchAiTab({
 
       if (appliedCount === 0) {
         setStatusMsg({
-          text: 'Не найдено совпадений шагов для обновления. Проверьте формат JSON.',
+          text:
+            uiLang === 'en'
+              ? 'No matching steps found to update. Check JSON format.'
+              : 'Не найдено совпадений шагов для обновления. Проверьте формат JSON.',
           isError: true,
         });
         return;
@@ -436,7 +495,10 @@ function BatchAiTab({
 
       await onUpdateProject({ steps: updatedSteps });
       setStatusMsg({
-        text: `Успешно обновлено шагов: ${appliedCount} из ${project.steps.length}!`,
+        text:
+          uiLang === 'en'
+            ? `Successfully updated ${appliedCount} of ${project.steps.length} steps!`
+            : `Успешно обновлено шагов: ${appliedCount} из ${project.steps.length}!`,
       });
       setRawAiResponse('');
     } catch (err: unknown) {
@@ -454,11 +516,14 @@ function BatchAiTab({
       {/* Workflow Explainer */}
       <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
         <h3 className="font-bold text-xs uppercase tracking-wider text-teal-600 dark:text-teal-400 mb-2">
-          Уровень 1: Бесплатный пакетный ИИ (0 токенов, 0 API-ключей)
+          {uiLang === 'en'
+            ? 'Level 1: Free Batch AI (0 tokens, 0 API keys)'
+            : 'Уровень 1: Бесплатный пакетный ИИ (0 токенов, 0 API-ключей)'}
         </h3>
         <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-4">
-          Если у вас нет платных API-ключей, вы можете обновить весь курс за 1 минуту через любой
-          бесплатный чат (ChatGPT, Claude, Gemini, DeepSeek):
+          {uiLang === 'en'
+            ? 'If you do not have paid API keys, you can update your entire guide in 1 minute using any free web chat (ChatGPT, Claude, Gemini, DeepSeek):'
+            : 'Если у вас нет платных API-ключей, вы можете обновить весь курс за 1 минуту через любой бесплатный чат (ChatGPT, Claude, Gemini, DeepSeek):'}
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
@@ -466,9 +531,13 @@ function BatchAiTab({
             <span className="w-5 h-5 rounded-full bg-teal-600 text-white font-bold inline-flex items-center justify-center text-[11px] mb-1">
               1
             </span>
-            <p className="font-semibold text-slate-800 dark:text-slate-200">Скопируйте промпт</p>
+            <p className="font-semibold text-slate-800 dark:text-slate-200">
+              {uiLang === 'en' ? 'Copy the Prompt' : 'Скопируйте промпт'}
+            </p>
             <p className="text-[11px] text-slate-500">
-              В него автоматически упакованы все {project.steps.length} шагов и черновые заметки.
+              {uiLang === 'en'
+                ? `Automatically bundles all ${project.steps.length} steps and rough drafts.`
+                : `В него автоматически упакованы все ${project.steps.length} шагов и черновые заметки.`}
             </p>
           </div>
 
@@ -476,9 +545,13 @@ function BatchAiTab({
             <span className="w-5 h-5 rounded-full bg-teal-600 text-white font-bold inline-flex items-center justify-center text-[11px] mb-1">
               2
             </span>
-            <p className="font-semibold text-slate-800 dark:text-slate-200">Отправьте в чат</p>
+            <p className="font-semibold text-slate-800 dark:text-slate-200">
+              {uiLang === 'en' ? 'Paste in AI Chat' : 'Отправьте в чат'}
+            </p>
             <p className="text-[11px] text-slate-500">
-              Нейросеть сформирует лаконичные двуязычные инструкции с тегами <b>...</b>.
+              {uiLang === 'en'
+                ? 'The AI generates concise bilingual instructions with <b>...</b> tags.'
+                : 'Нейросеть сформирует лаконичные двуязычные инструкции с тегами <b>...</b>.'}
             </p>
           </div>
 
@@ -486,9 +559,13 @@ function BatchAiTab({
             <span className="w-5 h-5 rounded-full bg-teal-600 text-white font-bold inline-flex items-center justify-center text-[11px] mb-1">
               3
             </span>
-            <p className="font-semibold text-slate-800 dark:text-slate-200">Вставьте JSON сюда</p>
+            <p className="font-semibold text-slate-800 dark:text-slate-200">
+              {uiLang === 'en' ? 'Paste JSON Here' : 'Вставьте JSON сюда'}
+            </p>
             <p className="text-[11px] text-slate-500">
-              Нажмите «Применить» — все шаги и главы мгновенно обновятся.
+              {uiLang === 'en'
+                ? 'Click "Apply" to instantly update all steps and chapters.'
+                : 'Нажмите «Применить» — все шаги и главы мгновенно обновятся.'}
             </p>
           </div>
         </div>
@@ -499,10 +576,12 @@ function BatchAiTab({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h4 className="font-bold text-xs text-slate-900 dark:text-slate-100">
-              Готовый пакетный промпт курса
+              {uiLang === 'en' ? 'Course Batch Prompt' : 'Готовый пакетный промпт курса'}
             </h4>
             <p className="text-[11px] text-slate-500">
-              Включает действия, голосовые черновики и оглавление всех {project.steps.length} шагов
+              {uiLang === 'en'
+                ? `Includes actions, voice drafts, and table of contents for all ${project.steps.length} steps`
+                : `Включает действия, голосовые черновики и оглавление всех ${project.steps.length} шагов`}
             </p>
           </div>
 
@@ -511,7 +590,13 @@ function BatchAiTab({
               onClick={() => setShowPromptPreview(!showPromptPreview)}
               className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
             >
-              {showPromptPreview ? 'Скрыть текст' : 'Показать текст промпта'}
+              {showPromptPreview
+                ? uiLang === 'en'
+                  ? 'Hide Text'
+                  : 'Скрыть текст'
+                : uiLang === 'en'
+                ? 'Show Prompt Text'
+                : 'Показать текст промпта'}
             </button>
 
             <button
@@ -519,7 +604,13 @@ function BatchAiTab({
               className="bg-teal-600 hover:bg-teal-700 text-white text-xs px-4 py-1.5 rounded-lg font-semibold shadow-sm transition flex items-center gap-1.5"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? 'Скопировано в буфер!' : 'Скопировать промпт для чата ИИ'}
+              {copied
+                ? uiLang === 'en'
+                  ? 'Copied to Clipboard!'
+                  : 'Скопировано в буфер!'
+                : uiLang === 'en'
+                ? 'Copy Prompt for AI Chat'
+                : 'Скопировать промпт для чата ИИ'}
             </button>
           </div>
         </div>
@@ -539,13 +630,15 @@ function BatchAiTab({
       {/* Paste AI JSON Response */}
       <div className="space-y-3">
         <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
-          Вставьте полученный ответ от ИИ (JSON-массив):
+          {uiLang === 'en'
+            ? 'Paste AI JSON Response (Array of Steps):'
+            : 'Вставьте полученный ответ от ИИ (JSON-массив):'}
         </label>
         <textarea
           rows={6}
           value={rawAiResponse}
           onChange={(e) => setRawAiResponse(e.target.value)}
-          placeholder={`[\n  {\n    "stepIndex": 0,\n    "en": "In the top toolbar, click <b>+ New Pipeline</b>.",\n    "ru": "На верхней панели нажмите <b>+ New Pipeline</b>.",\n    "chapterTitle": "Создание пайплайна"\n  }\n]`}
+          placeholder={`[\n  {\n    "stepIndex": 0,\n    "en": "In the top toolbar, click <b>+ New Pipeline</b>.",\n    "ru": "На верхней панели нажмите <b>+ New Pipeline</b>.",\n    "chapterTitle": "Setup Wizard"\n  }\n]`}
           className="w-full text-xs font-mono p-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:border-teal-500 focus:outline-none leading-relaxed"
         />
 
@@ -572,7 +665,7 @@ function BatchAiTab({
               onClick={() => setRawAiResponse('')}
               className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 px-3 py-1.5"
             >
-              Очистить
+              {uiLang === 'en' ? 'Clear' : 'Очистить'}
             </button>
           )}
 
@@ -582,7 +675,9 @@ function BatchAiTab({
             className="bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white text-xs px-5 py-2 rounded-xl font-bold shadow transition flex items-center gap-2"
           >
             {isApplying ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-            Применить переводы и описания ко всем шагам
+            {uiLang === 'en'
+              ? 'Apply Translations & Descriptions to All Steps'
+              : 'Применить переводы и описания ко всем шагам'}
           </button>
         </div>
       </div>
@@ -599,11 +694,13 @@ function GeminiMicroCropTab({
   screenshots,
   initialActiveStep,
   onUpdateProject,
+  uiLang = 'en',
 }: {
   project: GuideProject;
   screenshots: ScreenshotAsset[];
   initialActiveStep?: GuideStep;
   onUpdateProject: (updates: Partial<GuideProject>) => Promise<void>;
+  uiLang?: 'en' | 'ru';
 }) {
   // Settings
   const [apiKey, setApiKey] = useState<string>('');
@@ -689,11 +786,19 @@ function GeminiMicroCropTab({
   // Generate with Gemini for the currently selected step
   async function handleGenerateForCurrentStep() {
     if (!currentStep || !currentAsset?.blob) {
-      setErrorMsg('У выбранного шага нет привязанного скриншота.');
+      setErrorMsg(
+        uiLang === 'en'
+          ? 'The selected step has no attached screenshot image.'
+          : 'У выбранного шага нет привязанного скриншота.'
+      );
       return;
     }
     if (!apiKey.trim()) {
-      setErrorMsg('Введите Gemini API ключ в настройках ниже.');
+      setErrorMsg(
+        uiLang === 'en'
+          ? 'Enter Gemini API key in settings below.'
+          : 'Введите Gemini API ключ в настройках ниже.'
+      );
       return;
     }
 
@@ -735,16 +840,20 @@ function GeminiMicroCropTab({
   // Batch fill empty steps
   async function handleFillEmptySteps() {
     if (!apiKey.trim()) {
-      setErrorMsg('Введите Gemini API ключ для запуска авто-заполнения.');
+      setErrorMsg(
+        uiLang === 'en'
+          ? 'Enter Gemini API key to run auto-fill.'
+          : 'Введите Gemini API ключ для запуска авто-заполнения.'
+      );
       return;
     }
 
     const emptySteps = project.steps.filter(
-      (s) => !s.ru || !s.en || s.ru.includes('Описание следующего')
+      (s) => !s.ru || !s.en || s.ru.includes('Описание следующего') || s.en.includes('Next step')
     );
 
     if (emptySteps.length === 0) {
-      alert('Все шаги уже имеют описания!');
+      alert(uiLang === 'en' ? 'All steps already have descriptions!' : 'Все шаги уже имеют описания!');
       return;
     }
 
@@ -784,7 +893,11 @@ function GeminiMicroCropTab({
 
       await onUpdateProject({ steps: currentSteps });
       setBatchProgress(null);
-      alert('Авто-заполнение пустых шагов завершено!');
+      alert(
+        uiLang === 'en'
+          ? 'Auto-filling empty steps complete!'
+          : 'Авто-заполнение пустых шагов завершено!'
+      );
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : String(err));
     } finally {
@@ -821,11 +934,11 @@ function GeminiMicroCropTab({
         <Zap className="w-5 h-5 text-teal-600 shrink-0 mt-0.5" />
         <div className="text-xs leading-relaxed text-slate-700 dark:text-slate-300">
           <span className="font-bold text-slate-900 dark:text-slate-100">
-            3-Уровневая экономия лимитов и токенов:
+            {uiLang === 'en' ? '3-Tier Token & Limit Economy:' : '3-Уровневая экономия лимитов и токенов:'}
           </span>{' '}
-          Вместо отправки полного 2 МБ скриншота, инструмент вырезает мини-фрагмент ~300×200px с
-          красной рамкой (~15–25 КБ). Это экономит лимиты Google Gemini в 20–50 раз, гарантирует
-          мгновенный отклик и позволяет комфортно работать на 100% бесплатном тарифе AI Studio!
+          {uiLang === 'en'
+            ? 'Instead of sending a full 2 MB screenshot, the tool crops a mini ~300×200px snippet with a red bounding box (~15–25 KB). This reduces Google Gemini token usage by 20–50x, guarantees instant response, and works comfortably within Google AI Studio 100% free tier!'
+            : 'Вместо отправки полного 2 МБ скриншота, инструмент вырезает мини-фрагмент ~300×200px с красной рамкой (~15–25 КБ). Это экономит лимиты Google Gemini в 20–50 раз, гарантирует мгновенный отклик и позволяет комфортно работать на 100% бесплатном тарифе AI Studio!'}
         </div>
       </div>
 
@@ -834,7 +947,9 @@ function GeminiMicroCropTab({
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Key className="w-4 h-4 text-teal-600" />
-            <h4 className="font-bold text-xs">Настройки Gemini API (BYOK)</h4>
+            <h4 className="font-bold text-xs">
+              {uiLang === 'en' ? 'Gemini API Settings (BYOK)' : 'Настройки Gemini API (BYOK)'}
+            </h4>
           </div>
 
           <a
@@ -843,14 +958,17 @@ function GeminiMicroCropTab({
             rel="noreferrer"
             className="text-[11px] text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-1 font-medium"
           >
-            Получить бесплатный ключ в Google AI Studio <ExternalLink className="w-3 h-3" />
+            {uiLang === 'en' ? 'Get free key at Google AI Studio' : 'Получить бесплатный ключ в Google AI Studio'}{' '}
+            <ExternalLink className="w-3 h-3" />
           </a>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
           <div className="md:col-span-2">
             <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-              API Ключ (хранится только в вашем браузере / localStorage)
+              {uiLang === 'en'
+                ? 'API Key (saved only in browser localStorage)'
+                : 'API Ключ (хранится только в вашем браузере / localStorage)'}
             </label>
             <input
               type="password"
@@ -863,7 +981,7 @@ function GeminiMicroCropTab({
 
           <div>
             <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-              Модель Gemini
+              {uiLang === 'en' ? 'Gemini Model' : 'Модель Gemini'}
             </label>
             <div className="flex items-center gap-2">
               <select
@@ -871,7 +989,7 @@ function GeminiMicroCropTab({
                 onChange={(e) => setModel(e.target.value)}
                 className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-semibold"
               >
-                <option value="gemini-2.5-flash">gemini-2.5-flash (Рекомендуется)</option>
+                <option value="gemini-2.5-flash">gemini-2.5-flash ({uiLang === 'en' ? 'Recommended' : 'Рекомендуется'})</option>
                 <option value="gemini-2.0-flash">gemini-2.0-flash</option>
                 <option value="gemini-1.5-flash">gemini-1.5-flash</option>
                 <option value="gemini-1.5-pro">gemini-1.5-pro</option>
@@ -880,7 +998,7 @@ function GeminiMicroCropTab({
               <button
                 onClick={handleSaveSettings}
                 className="bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 p-2 rounded-lg text-xs font-semibold transition shrink-0"
-                title="Сохранить настройки"
+                title={uiLang === 'en' ? 'Save Settings' : 'Сохранить настройки'}
               >
                 {settingsSaved ? <Check className="w-4 h-4 text-emerald-600" /> : <Check className="w-4 h-4" />}
               </button>
@@ -894,11 +1012,11 @@ function GeminiMicroCropTab({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Sliders className="w-4 h-4 text-teal-600" />
-            <h4 className="font-bold text-xs">Инспектор микро-кропа</h4>
+            <h4 className="font-bold text-xs">{uiLang === 'en' ? 'Micro-Crop Inspector' : 'Инспектор микро-кропа'}</h4>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500">Шаг:</span>
+            <span className="text-xs text-slate-500">{uiLang === 'en' ? 'Step:' : 'Шаг:'}</span>
             <select
               value={selectedStepId}
               onChange={(e) => setSelectedStepId(e.target.value)}
@@ -906,7 +1024,7 @@ function GeminiMicroCropTab({
             >
               {project.steps.map((st, idx) => (
                 <option key={st.id} value={st.id}>
-                  {idx + 1}. [{st.act}] {st.ru ? st.ru.substring(0, 35) + '...' : '(без текста)'}
+                  {idx + 1}. [{st.act}] {uiLang === 'en' ? (st.en ? st.en.substring(0, 35) + '...' : '(no text)') : (st.ru ? st.ru.substring(0, 35) + '...' : '(без текста)')}
                 </option>
               ))}
             </select>
@@ -918,7 +1036,7 @@ function GeminiMicroCropTab({
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                1. Микро-кроп с контекстом (в ИИ ~20 КБ)
+                {uiLang === 'en' ? '1. Context Micro-Crop (sent to AI ~20 KB)' : '1. Микро-кроп с контекстом (в ИИ ~20 КБ)'}
               </span>
               <span className="text-[10px] bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-200 px-2 py-0.5 rounded font-mono">
                 max 400px JPEG
@@ -935,21 +1053,23 @@ function GeminiMicroCropTab({
                   className="max-h-full max-w-full object-contain"
                 />
               ) : (
-                <span className="text-xs text-slate-500">Нет превью</span>
+                <span className="text-xs text-slate-500">{uiLang === 'en' ? 'No preview' : 'Нет превью'}</span>
               )}
             </div>
             <p className="text-[10px] text-slate-400 mt-1">
-              Красная рамка вокруг цели нарисована автоматически, чтобы модель точно знала кнопку.
+              {uiLang === 'en'
+                ? 'Red bounding box is drawn automatically so model pinpoints the target element.'
+                : 'Красная рамка вокруг цели нарисована автоматически, чтобы модель точно знала кнопку.'}
             </p>
           </div>
 
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                2. Точная рамка кнопки (Tight crop)
+                {uiLang === 'en' ? '2. Precise Button Outline (Tight crop)' : '2. Точная рамка кнопки (Tight crop)'}
               </span>
               <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded font-mono">
-                Кнопка превью
+                {uiLang === 'en' ? 'Button Preview' : 'Кнопка превью'}
               </span>
             </div>
 
@@ -963,11 +1083,11 @@ function GeminiMicroCropTab({
                   className="max-h-full max-w-full object-contain border border-teal-500/50 rounded"
                 />
               ) : (
-                <span className="text-xs text-slate-500">Нет превью</span>
+                <span className="text-xs text-slate-500">{uiLang === 'en' ? 'No preview' : 'Нет превью'}</span>
               )}
             </div>
             <p className="text-[10px] text-slate-400 mt-1">
-              Строго выделенный элемент интерфейса без окружения.
+              {uiLang === 'en' ? 'Strictly cropped UI element without surrounding noise.' : 'Строго выделенный элемент интерфейса без окружения.'}
             </p>
           </div>
         </div>
@@ -976,9 +1096,9 @@ function GeminiMicroCropTab({
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
           <div className="text-xs text-slate-500">
             {currentStep?.voiceDraft ? (
-              <span>Черновик: «{currentStep.voiceDraft}»</span>
+              <span>{uiLang === 'en' ? `Draft: "${currentStep.voiceDraft}"` : `Черновик: «${currentStep.voiceDraft}»`}</span>
             ) : (
-              <span>Голосовой черновик отсутствует (будет распознан по картинке)</span>
+              <span>{uiLang === 'en' ? 'No voice draft (will be detected visually)' : 'Голосовой черновик отсутствует (будет распознан по картинке)'}</span>
             )}
           </div>
 
@@ -989,7 +1109,7 @@ function GeminiMicroCropTab({
               className="text-xs border border-slate-300 dark:border-slate-700 hover:border-teal-500 px-3 py-2 rounded-xl font-semibold transition flex items-center gap-1.5"
             >
               <Zap className="w-3.5 h-3.5 text-teal-600" />
-              Заполнить все пустые шаги
+              {uiLang === 'en' ? 'Fill All Empty Steps' : 'Заполнить все пустые шаги'}
             </button>
 
             <button
@@ -1002,7 +1122,13 @@ function GeminiMicroCropTab({
               ) : (
                 <Wand2 className="w-3.5 h-3.5" />
               )}
-              {isGenerating ? 'Генерация...' : 'Сгенерировать описание для шага'}
+              {isGenerating
+                ? uiLang === 'en'
+                  ? 'Generating...'
+                  : 'Генерация...'
+                : uiLang === 'en'
+                ? 'Generate Description for Step'
+                : 'Сгенерировать описание для шага'}
             </button>
           </div>
         </div>
@@ -1011,9 +1137,9 @@ function GeminiMicroCropTab({
         {batchProgress && (
           <div className="p-3 bg-teal-50 dark:bg-teal-950/40 rounded-xl border border-teal-200 dark:border-teal-800 text-xs">
             <div className="flex items-center justify-between mb-1 font-semibold">
-              <span>Пакетная обработка...</span>
+              <span>{uiLang === 'en' ? 'Batch processing...' : 'Пакетная обработка...'}</span>
               <span>
-                {batchProgress.current} из {batchProgress.total}
+                {batchProgress.current} {uiLang === 'en' ? 'of' : 'из'} {batchProgress.total}
               </span>
             </div>
             <div className="w-full bg-teal-200 dark:bg-teal-800 h-2 rounded-full overflow-hidden">
@@ -1041,11 +1167,11 @@ function GeminiMicroCropTab({
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
                 <Check className="w-4 h-4 text-emerald-600" />
-                Сгенерировано и применено:
+                {uiLang === 'en' ? 'Generated & Applied:' : 'Сгенерировано и применено:'}
               </span>
               {lastResult.buttonLabel && (
                 <span className="text-[11px] bg-emerald-200 dark:bg-emerald-800 px-2 py-0.5 rounded font-mono font-semibold">
-                  Элемент: {lastResult.buttonLabel}
+                  {uiLang === 'en' ? 'Element' : 'Элемент'}: {lastResult.buttonLabel}
                 </span>
               )}
             </div>
@@ -1074,11 +1200,14 @@ function GeminiMicroCropTab({
       <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
         <h4 className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-2 flex items-center gap-2">
           <Eye className="w-4 h-4 text-teal-600" />
-          Уровень 0: Быстрый конструктор без ИИ (100% автономный)
+          {uiLang === 'en'
+            ? 'Level 0: Fast Autonomous Builder (No AI, 0 API calls)'
+            : 'Уровень 0: Быстрый конструктор без ИИ (100% автономный)'}
         </h4>
         <p className="text-[11px] text-slate-500 mb-3">
-          Введите название кнопки или надпись с экрана — шаблонизатор мгновенно сформирует чистые
-          двуязычные фразы с тегами <b>...</b>:
+          {uiLang === 'en'
+            ? 'Enter button label or screen text — template engine instantly crafts clean bilingual phrases with <b>...</b> tags:'
+            : 'Введите название кнопки или надпись с экрана — шаблонизатор мгновенно сформирует чистые двуязычные фразы с тегами <b>...</b>:'}
         </p>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -1087,19 +1216,19 @@ function GeminiMicroCropTab({
             onChange={(e) => setManualAct(e.target.value as ActionType)}
             className="text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-semibold"
           >
-            <option value="click">click (Нажать)</option>
-            <option value="type">type (Ввести)</option>
-            <option value="select">select (Выбрать)</option>
-            <option value="drag">drag (Перетащить)</option>
-            <option value="scroll">scroll (Прокрутить)</option>
-            <option value="look">look (Обратить внимание)</option>
+            <option value="click">click ({uiLang === 'en' ? 'Click' : 'Нажать'})</option>
+            <option value="type">type ({uiLang === 'en' ? 'Type' : 'Ввести'})</option>
+            <option value="select">select ({uiLang === 'en' ? 'Select' : 'Выбрать'})</option>
+            <option value="drag">drag ({uiLang === 'en' ? 'Drag' : 'Перетащить'})</option>
+            <option value="scroll">scroll ({uiLang === 'en' ? 'Scroll' : 'Прокрутить'})</option>
+            <option value="look">look ({uiLang === 'en' ? 'Notice' : 'Обратить внимание'})</option>
           </select>
 
           <input
             type="text"
             value={manualLabel}
             onChange={(e) => setManualLabel(e.target.value)}
-            placeholder="например: + New Item или Save"
+            placeholder={uiLang === 'en' ? 'e.g. + New Item or Save' : 'например: + New Item или Save'}
             className="text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 flex-1 min-w-[200px]"
             onKeyDown={(e) => {
               if (e.key === 'Enter') handleApplyLevel0Caption();
@@ -1111,7 +1240,7 @@ function GeminiMicroCropTab({
             disabled={!manualLabel.trim()}
             className="bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs px-4 py-2 rounded-lg font-bold disabled:opacity-30 transition"
           >
-            Сформировать и применить
+            {uiLang === 'en' ? 'Generate & Apply' : 'Сформировать и применить'}
           </button>
         </div>
       </div>

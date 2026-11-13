@@ -46,6 +46,15 @@ import {
 } from './services/importerExporter';
 import { LiveCaptureWorkspace } from './components/capture/LiveCaptureWorkspace';
 import { AiAndPrivacyModal } from './components/editor/AiAndPrivacyModal';
+import { WelcomeTourModal } from './components/onboarding/WelcomeTourModal';
+import {
+  type UiLang,
+  getSavedUiLang,
+  saveUiLang,
+  hasSeenWelcomeTour,
+  markWelcomeTourSeen,
+  UI_TEXT,
+} from './i18n/uiTranslations';
 import {
   getGeminiSettings,
   describeStepWithGeminiMicroCrop,
@@ -60,6 +69,8 @@ type ActiveTab = 'capture' | 'editor' | 'player';
 type EditorDrawTool = 'target' | 'step_blur' | 'global_blur' | 'mask';
 
 export default function App() {
+  const [uiLang, setUiLang] = useState<UiLang>(() => getSavedUiLang());
+  const [isWelcomeOpen, setIsWelcomeOpen] = useState<boolean>(() => !hasSeenWelcomeTour());
   const [projects, setProjects] = useState<GuideProject[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [activeProject, setActiveProject] = useState<GuideProject | null>(null);
@@ -180,18 +191,22 @@ export default function App() {
 
   async function handleCreateNewProject() {
     try {
+      const isEn = uiLang === 'en';
       const newProj = await createProject({
-        titleRu: 'Новый интерактивный гайд',
-        titleEn: 'New Interactive Guide',
-        pageTitle: 'Interactive Guide',
+        titleRu: isEn ? 'Interactive Step Guide' : 'Новый интерактивный гайд',
+        titleEn: 'Interactive Step Guide',
+        subRu: isEn ? 'Step-by-step training walkthrough' : 'Пошаговый интерактивный тренажёр',
+        subEn: 'Step-by-step training walkthrough',
+        pageTitle: isEn ? 'Interactive Step Guide' : 'Интерактивный тренажёр',
+        defaultLang: isEn ? 'en' : 'ru',
       });
       await loadProjects();
       setActiveProjectId(newProj.id);
       setActiveTab('capture');
-      showStatus('Проект успешно создан!');
+      showStatus(isEn ? 'Guide created successfully!' : 'Проект успешно создан!');
     } catch (err) {
       console.error(err);
-      showStatus('Не удалось создать проект');
+      showStatus(uiLang === 'en' ? 'Failed to create guide' : 'Не удалось создать проект');
     }
   }
 
@@ -202,10 +217,16 @@ export default function App() {
       await loadProjects();
       setActiveProjectId(demo.id);
       setActiveTab('player');
-      showStatus('Демо-гайд с встроенными скриншотами создан!');
+      showStatus(
+        uiLang === 'en'
+          ? 'Demo guide created with pre-configured screenshots!'
+          : 'Демо-гайд с встроенными скриншотами создан!'
+      );
     } catch (err) {
       console.error(err);
-      showStatus('Ошибка при создании демо-проекта');
+      showStatus(
+        uiLang === 'en' ? 'Error creating demo project' : 'Ошибка при создании демо-проекта'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -213,17 +234,24 @@ export default function App() {
 
   async function handleDeleteProject(id: string, e: React.MouseEvent) {
     e.stopPropagation();
-    if (!confirm('Вы уверены, что хотите удалить этот проект и все его скриншоты?')) return;
+    if (
+      !confirm(
+        uiLang === 'en'
+          ? UI_TEXT.en.dashboard.confirmDelete
+          : UI_TEXT.ru.dashboard.confirmDelete
+      )
+    )
+      return;
     try {
       await deleteProject(id);
       if (activeProjectId === id) {
         setActiveProjectId(null);
       }
       await loadProjects();
-      showStatus('Проект удалён');
+      showStatus(uiLang === 'en' ? 'Guide deleted' : 'Проект удалён');
     } catch (err) {
       console.error(err);
-      showStatus('Ошибка при удалении проекта');
+      showStatus(uiLang === 'en' ? 'Error deleting guide' : 'Ошибка при удалении проекта');
     }
   }
 
@@ -237,10 +265,18 @@ export default function App() {
       await loadProjects();
       setActiveProjectId(imported.id);
       setActiveTab('editor');
-      showStatus(`Импортирован проект "${imported.titleRu}" (${imported.steps.length} шагов)`);
+      showStatus(
+        uiLang === 'en'
+          ? `Imported guide "${imported.titleEn || imported.titleRu}" (${imported.steps.length} steps)`
+          : `Импортирован проект "${imported.titleRu}" (${imported.steps.length} шагов)`
+      );
     } catch (err: unknown) {
       console.error(err);
-      showStatus(`Ошибка импорта: ${err instanceof Error ? err.message : String(err)}`);
+      showStatus(
+        uiLang === 'en'
+          ? `Import error: ${err instanceof Error ? err.message : String(err)}`
+          : `Ошибка импорта: ${err instanceof Error ? err.message : String(err)}`
+      );
     } finally {
       setIsLoading(false);
       if (folderInputRef.current) folderInputRef.current.value = '';
@@ -260,10 +296,14 @@ export default function App() {
       }
       const updatedList = await getScreenshotsForProject(activeProject.id);
       setScreenshots(updatedList);
-      showStatus(`Добавлено скриншотов: ${files.length}`);
+      showStatus(
+        uiLang === 'en'
+          ? `Added ${files.length} screenshots`
+          : `Добавлено скриншотов: ${files.length}`
+      );
     } catch (err) {
       console.error(err);
-      showStatus('Ошибка при загрузке скриншота');
+      showStatus(uiLang === 'en' ? 'Error uploading screenshots' : 'Ошибка при загрузке скриншота');
     } finally {
       setIsLoading(false);
       if (screenshotInputRef.current) screenshotInputRef.current.value = '';
@@ -279,8 +319,8 @@ export default function App() {
       screenshotId: targetShotId,
       act: 'click',
       box: { x: 30, y: 30, w: 25, h: 12 },
-      en: 'Next step description',
-      ru: 'Описание следующего шага',
+      en: 'Click on the highlighted element',
+      ru: 'Нажмите на выделенный элемент',
     };
     const updatedSteps = [...activeProject.steps, newStep];
     saveSteps(updatedSteps);
@@ -345,10 +385,14 @@ export default function App() {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 5000);
-      showStatus(`Файл ${a.download} успешно сформирован и скачан!`);
+      showStatus(
+        uiLang === 'en'
+          ? `File ${a.download} generated and downloaded successfully!`
+          : `Файл ${a.download} успешно сформирован и скачан!`
+      );
     } catch (err) {
       console.error(err);
-      showStatus('Ошибка при генерации HTML');
+      showStatus(uiLang === 'en' ? 'Error generating HTML' : 'Ошибка при генерации HTML');
     } finally {
       setIsLoading(false);
     }
@@ -369,10 +413,14 @@ export default function App() {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 5000);
-      showStatus('Файл steps.json успешно выгружен!');
+      showStatus(
+        uiLang === 'en'
+          ? 'File steps.json exported successfully!'
+          : 'Файл steps.json успешно выгружен!'
+      );
     } catch (err) {
       console.error(err);
-      showStatus('Ошибка при экспорте steps.json');
+      showStatus(uiLang === 'en' ? 'Error exporting steps.json' : 'Ошибка при экспорте steps.json');
     }
   }
 
@@ -416,25 +464,31 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-base font-bold tracking-tight text-slate-800 dark:text-slate-100">
-              Guide Creation Tool
+              {UI_TEXT[uiLang].header.appName}
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Универсальный конструктор интерактивных руководств и тренажёров
+              {UI_TEXT[uiLang].header.tagline}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           {activeProject && (
             <>
               {/* Prominent Privacy & AI Assistant button in header */}
               <button
                 onClick={() => setIsAiModalOpen(true)}
                 className="px-3.5 py-1.5 rounded-xl font-semibold text-xs flex items-center gap-2 bg-gradient-to-r from-teal-600 to-indigo-600 hover:from-teal-500 hover:to-indigo-500 text-white shadow-sm transition"
-                title="Настройка глобального размытия и ИИ-генерация текстов"
+                title={
+                  uiLang === 'en'
+                    ? 'Global blur presets and AI instruction generator'
+                    : 'Настройка глобального размытия и ИИ-генерация текстов'
+                }
               >
                 <Shield className="w-3.5 h-3.5 text-teal-200" />
-                <span>🛡️ Приватность и ✨ ИИ-помощник</span>
+                <span>
+                  {uiLang === 'en' ? '🛡️ Privacy & ✨ AI Assistant' : '🛡️ Приватность и ✨ ИИ-помощник'}
+                </span>
                 {activeProject.globalBlurBoxes && activeProject.globalBlurBoxes.length > 0 && (
                   <span className="bg-white/25 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold ml-0.5">
                     {activeProject.globalBlurBoxes.length}
@@ -446,15 +500,66 @@ export default function App() {
                 onClick={() => setActiveProjectId(null)}
                 className="text-xs font-medium px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-1.5 transition"
               >
-                <ArrowLeft className="w-3.5 h-3.5" /> Все гайды
+                <ArrowLeft className="w-3.5 h-3.5" /> {UI_TEXT[uiLang].tabs.backToDashboard}
               </button>
             </>
           )}
 
+          {/* How to Use Modal Trigger */}
+          <button
+            onClick={() => setIsWelcomeOpen(true)}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition shadow-2xs"
+            title={
+              uiLang === 'en'
+                ? 'Open Interactive Welcome Guide & Tips'
+                : 'Открыть интерактивный тур и подсказки'
+            }
+          >
+            <span>❓</span>
+            <span>{uiLang === 'en' ? 'How to Use' : 'Как пользоваться'}</span>
+          </button>
+
+          {/* UI Language Switcher: EN | RU */}
+          <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden text-xs font-bold shadow-2xs">
+            <button
+              onClick={() => {
+                setUiLang('en');
+                saveUiLang('en');
+              }}
+              className={`px-2.5 py-1 transition ${
+                uiLang === 'en'
+                  ? 'bg-teal-600 text-white'
+                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+              title="Switch UI to English"
+            >
+              EN
+            </button>
+            <button
+              onClick={() => {
+                setUiLang('ru');
+                saveUiLang('ru');
+              }}
+              className={`px-2.5 py-1 transition ${
+                uiLang === 'ru'
+                  ? 'bg-teal-600 text-white'
+                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+              title="Переключить интерфейс на русский"
+            >
+              RU
+            </button>
+          </div>
+
+          {/* Dark / Light Mode Switcher */}
           <button
             onClick={() => setIsDarkMode(!isDarkMode)}
             className="p-2 rounded-md border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
-            title="Переключить тему"
+            title={
+              uiLang === 'en'
+                ? (isDarkMode ? UI_TEXT.en.header.themeLight : UI_TEXT.en.header.themeDark)
+                : (isDarkMode ? UI_TEXT.ru.header.themeLight : UI_TEXT.ru.header.themeDark)
+            }
           >
             {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
@@ -468,11 +573,11 @@ export default function App() {
           <div className="space-y-6">
             <div className="bg-gradient-to-r from-teal-700 to-cyan-800 text-white p-8 rounded-2xl shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
               <div>
-                <h2 className="text-2xl font-bold mb-2">Создание интерактивных гайдов</h2>
+                <h2 className="text-2xl font-bold mb-2">
+                  {UI_TEXT[uiLang].dashboard.title}
+                </h2>
                 <p className="text-teal-100 max-w-2xl text-sm leading-relaxed">
-                  Создавайте кликабельные интерактивные руководства и тренажёры из серии
-                  скриншотов и живого экрана. Экспортируйте в полностью автономный одиночный HTML-файл с поддержкой
-                  переключения RU/EN, сквозного размытия конфиденциальных данных и режима тренажёра.
+                  {UI_TEXT[uiLang].dashboard.subtitle}
                 </p>
               </div>
 
@@ -481,21 +586,24 @@ export default function App() {
                   onClick={handleCreateNewProject}
                   className="bg-white text-teal-800 hover:bg-teal-50 px-4 py-2.5 rounded-xl font-semibold text-sm flex items-center gap-2 shadow transition"
                 >
-                  <Plus className="w-4 h-4 text-teal-600" /> Новый гайд
+                  <Plus className="w-4 h-4 text-teal-600" />
+                  {UI_TEXT[uiLang].dashboard.createGuide}
                 </button>
 
                 <button
                   onClick={() => folderInputRef.current?.click()}
                   className="bg-teal-900/60 hover:bg-teal-900 text-white px-4 py-2.5 rounded-xl font-semibold text-sm flex items-center gap-2 border border-teal-500/30 transition"
                 >
-                  <FolderDown className="w-4 h-4" /> Импорт папки (steps.json)
+                  <FolderDown className="w-4 h-4" />
+                  {UI_TEXT[uiLang].dashboard.importFolder}
                 </button>
 
                 <button
                   onClick={handleCreateDemo}
                   className="bg-teal-500 hover:bg-teal-400 text-white px-4 py-2.5 rounded-xl font-semibold text-sm flex items-center gap-2 transition"
                 >
-                  <Sparkles className="w-4 h-4" /> Загрузить демо-гайд
+                  <Sparkles className="w-4 h-4" />
+                  {UI_TEXT[uiLang].dashboard.createDemo}
                 </button>
               </div>
             </div>
@@ -504,25 +612,31 @@ export default function App() {
             <div>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200">
-                  Ваши проекты ({projects.length})
+                  {uiLang === 'en'
+                    ? `Your Guides (${projects.length})`
+                    : `Ваши проекты (${projects.length})`}
                 </h3>
               </div>
 
               {isLoading && projects.length === 0 ? (
-                <div className="text-center py-12 text-slate-500">Загрузка проектов...</div>
+                <div className="text-center py-12 text-slate-500">
+                  {uiLang === 'en' ? 'Loading projects...' : 'Загрузка проектов...'}
+                </div>
               ) : projects.length === 0 ? (
                 <div className="text-center py-16 bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-8">
                   <FileCode className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-                  <h4 className="text-base font-semibold mb-1">Пока нет созданных гайдов</h4>
-                  <p className="text-sm text-slate-500 mb-5">
-                    Создайте новый проект с нуля или импортируйте существующую папку со steps.json
+                  <h4 className="text-base font-semibold mb-1">
+                    {UI_TEXT[uiLang].dashboard.noProjectsTitle}
+                  </h4>
+                  <p className="text-sm text-slate-500 mb-5 max-w-lg mx-auto">
+                    {UI_TEXT[uiLang].dashboard.noProjectsDesc}
                   </p>
                   <div className="flex justify-center gap-3">
                     <button
                       onClick={handleCreateDemo}
                       className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
                     >
-                      Создать демонстрационный гайд
+                      {UI_TEXT[uiLang].dashboard.createDemo}
                     </button>
                   </div>
                 </div>
@@ -540,27 +654,38 @@ export default function App() {
                       <div>
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <h4 className="font-bold text-slate-800 dark:text-slate-100 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition">
-                            {proj.titleRu || proj.titleEn}
+                            {uiLang === 'en' ? proj.titleEn || proj.titleRu : proj.titleRu || proj.titleEn}
                           </h4>
                           <button
                             onClick={(e) => handleDeleteProject(proj.id, e)}
                             className="text-slate-400 hover:text-red-500 p-1 rounded transition"
-                            title="Удалить проект"
+                            title={uiLang === 'en' ? 'Delete guide' : 'Удалить проект'}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                         <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mb-4">
-                          {proj.subRu || proj.subEn}
+                          {uiLang === 'en' ? proj.subEn || proj.subRu : proj.subRu || proj.subEn}
                         </p>
                       </div>
 
                       <div className="pt-3 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between text-xs text-slate-500">
                         <span className="flex items-center gap-1">
                           <Layers className="w-3.5 h-3.5 text-teal-600" />
-                          {proj.steps.length} {proj.steps.length === 1 ? 'шаг' : 'шагов'}
+                          {proj.steps.length}{' '}
+                          {uiLang === 'en'
+                            ? proj.steps.length === 1
+                              ? 'step'
+                              : 'steps'
+                            : proj.steps.length === 1
+                            ? 'шаг'
+                            : 'шагов'}
                         </span>
-                        <span>{new Date(proj.updatedAt).toLocaleDateString()}</span>
+                        <span>
+                          {new Date(proj.updatedAt).toLocaleDateString(
+                            uiLang === 'en' ? 'en-US' : 'ru-RU'
+                          )}
+                        </span>
                       </div>
                     </div>
                   ))}
@@ -576,24 +701,42 @@ export default function App() {
               <div className="flex-1">
                 <input
                   type="text"
-                  value={activeProject.titleRu}
+                  value={
+                    uiLang === 'en'
+                      ? activeProject.titleEn || activeProject.titleRu || ''
+                      : activeProject.titleRu || activeProject.titleEn || ''
+                  }
                   onChange={(e) => {
-                    const titleRu = e.target.value;
-                    setActiveProject({ ...activeProject, titleRu });
-                    updateProject(activeProject.id, { titleRu });
+                    const val = e.target.value;
+                    if (uiLang === 'en') {
+                      setActiveProject({ ...activeProject, titleEn: val });
+                      updateProject(activeProject.id, { titleEn: val });
+                    } else {
+                      setActiveProject({ ...activeProject, titleRu: val });
+                      updateProject(activeProject.id, { titleRu: val });
+                    }
                   }}
-                  placeholder="Заголовок гайда (RU)"
+                  placeholder={uiLang === 'en' ? 'Guide Title (EN)' : 'Заголовок гайда (RU)'}
                   className="font-bold text-lg bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:border-teal-500 focus:outline-none w-full text-slate-800 dark:text-slate-100 transition"
                 />
                 <input
                   type="text"
-                  value={activeProject.subRu}
+                  value={
+                    uiLang === 'en'
+                      ? activeProject.subEn || activeProject.subRu || ''
+                      : activeProject.subRu || activeProject.subEn || ''
+                  }
                   onChange={(e) => {
-                    const subRu = e.target.value;
-                    setActiveProject({ ...activeProject, subRu });
-                    updateProject(activeProject.id, { subRu });
+                    const val = e.target.value;
+                    if (uiLang === 'en') {
+                      setActiveProject({ ...activeProject, subEn: val });
+                      updateProject(activeProject.id, { subEn: val });
+                    } else {
+                      setActiveProject({ ...activeProject, subRu: val });
+                      updateProject(activeProject.id, { subRu: val });
+                    }
                   }}
-                  placeholder="Подзаголовок (RU)"
+                  placeholder={uiLang === 'en' ? 'Subtitle (EN)' : 'Подзаголовок (RU)'}
                   className="text-xs text-slate-500 dark:text-slate-400 bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:border-teal-500 focus:outline-none w-full transition"
                 />
               </div>
@@ -608,7 +751,10 @@ export default function App() {
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                   }`}
                 >
-                  <Video className="w-3.5 h-3.5" /> 1. Запись ({screenshots.length})
+                  <Video className="w-3.5 h-3.5" />
+                  {uiLang === 'en'
+                    ? `1. Capture (${screenshots.length})`
+                    : `1. Запись (${screenshots.length})`}
                 </button>
                 <button
                   onClick={() => setActiveTab('editor')}
@@ -618,7 +764,10 @@ export default function App() {
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                   }`}
                 >
-                  <Edit3 className="w-3.5 h-3.5" /> 2. Редактор ({activeProject.steps.length})
+                  <Edit3 className="w-3.5 h-3.5" />
+                  {uiLang === 'en'
+                    ? `2. Editor (${activeProject.steps.length})`
+                    : `2. Редактор (${activeProject.steps.length})`}
                 </button>
                 <button
                   onClick={() => setActiveTab('player')}
@@ -628,7 +777,8 @@ export default function App() {
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                   }`}
                 >
-                  <Play className="w-3.5 h-3.5" /> 3. Плеер и Экспорт
+                  <Play className="w-3.5 h-3.5" />
+                  {uiLang === 'en' ? '3. Player & Export' : '3. Плеер и Экспорт'}
                 </button>
               </div>
             </div>
@@ -646,6 +796,7 @@ export default function App() {
                   }
                   setActiveTab('editor');
                 }}
+                uiLang={uiLang}
               />
             )}
 
@@ -656,9 +807,13 @@ export default function App() {
                 <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 shadow-sm">
                   <div className="flex items-center gap-2 text-xs text-slate-500">
                     <span className="font-semibold text-slate-700 dark:text-slate-200">
-                      Редактирование шагов:
+                      {uiLang === 'en' ? 'Step Editing:' : 'Редактирование шагов:'}
                     </span>
-                    <span>{activeProject.steps.length} шагов, {screenshots.length} кадров</span>
+                    <span>
+                      {uiLang === 'en'
+                        ? `${activeProject.steps.length} steps, ${screenshots.length} frames`
+                        : `${activeProject.steps.length} шагов, ${screenshots.length} кадров`}
+                    </span>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -667,7 +822,11 @@ export default function App() {
                       className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-gradient-to-r from-teal-600 to-indigo-600 hover:from-teal-500 hover:to-indigo-500 text-white shadow-sm transition"
                     >
                       <Shield className="w-3.5 h-3.5 text-teal-200" />
-                      <span>🛡️ Приватность и ✨ ИИ-помощник</span>
+                      <span>
+                        {uiLang === 'en'
+                          ? '🛡️ Privacy & ✨ AI Assistant'
+                          : '🛡️ Приватность и ✨ ИИ-помощник'}
+                      </span>
                       {activeProject.globalBlurBoxes && activeProject.globalBlurBoxes.length > 0 && (
                         <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold ml-0.5">
                           {activeProject.globalBlurBoxes.length}
@@ -682,20 +841,25 @@ export default function App() {
                   <div className="lg:col-span-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4 flex flex-col h-[780px]">
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">
-                        Шаги ({activeProject.steps.length})
+                        {uiLang === 'en'
+                          ? `Steps (${activeProject.steps.length})`
+                          : `Шаги (${activeProject.steps.length})`}
                       </h3>
                       <button
                         onClick={() => handleAddStep()}
                         className="bg-teal-600 hover:bg-teal-700 text-white px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition"
                       >
-                        <Plus className="w-3.5 h-3.5" /> Добавить
+                        <Plus className="w-3.5 h-3.5" />
+                        {uiLang === 'en' ? 'Add' : 'Добавить'}
                       </button>
                     </div>
 
                     <div className="flex-1 overflow-y-auto space-y-2 pr-1">
                       {activeProject.steps.length === 0 ? (
                         <div className="text-center py-12 text-slate-400 text-xs">
-                          Нет шагов. Перейдите во вкладку «1. Запись» для захвата экрана или нажмите «+ Добавить».
+                          {uiLang === 'en'
+                            ? 'No steps yet. Go to "1. Capture" tab to record your screen or click "+ Add".'
+                            : 'Нет шагов. Перейдите во вкладку «1. Запись» для захвата экрана или нажмите «+ Добавить».'}
                         </div>
                       ) : (
                         activeProject.steps.map((st, idx) => {
@@ -730,7 +894,9 @@ export default function App() {
                                     {st.act}
                                   </span>
                                   <p className="truncate text-slate-700 dark:text-slate-300">
-                                    {st.ru || st.en || '(без текста)'}
+                                    {uiLang === 'en'
+                                      ? st.en || st.ru || '(no text)'
+                                      : st.ru || st.en || '(без текста)'}
                                   </p>
                                 </div>
                               </div>
@@ -740,7 +906,7 @@ export default function App() {
                                   onClick={(e) => handleMoveStep(idx, 'up', e)}
                                   disabled={idx === 0}
                                   className="p-1 hover:text-teal-600 disabled:opacity-20"
-                                  title="Переместить вверх"
+                                  title={uiLang === 'en' ? 'Move Up' : 'Переместить вверх'}
                                 >
                                   <ChevronUp className="w-3.5 h-3.5" />
                                 </button>
@@ -748,14 +914,14 @@ export default function App() {
                                   onClick={(e) => handleMoveStep(idx, 'down', e)}
                                   disabled={idx === activeProject.steps.length - 1}
                                   className="p-1 hover:text-teal-600 disabled:opacity-20"
-                                  title="Переместить вниз"
+                                  title={uiLang === 'en' ? 'Move Down' : 'Переместить вниз'}
                                 >
                                   <ChevronDown className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                   onClick={(e) => handleDeleteStep(idx, e)}
                                   className="p-1 hover:text-red-500"
-                                  title="Удалить шаг"
+                                  title={uiLang === 'en' ? 'Delete Step' : 'Удалить шаг'}
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -780,10 +946,13 @@ export default function App() {
                         onUpdateScreenshot={handleUpdateScreenshot}
                         onOpenAiModal={() => setIsAiModalOpen(true)}
                         showStatus={showStatus}
+                        uiLang={uiLang}
                       />
                     ) : (
                       <div className="text-center py-20 text-slate-400">
-                        Выберите или создайте шаг для редактирования
+                        {uiLang === 'en'
+                          ? 'Select or create a step to edit'
+                          : 'Выберите или создайте шаг для редактирования'}
                       </div>
                     )}
                   </div>
@@ -796,10 +965,13 @@ export default function App() {
               <div className="space-y-6">
                 {/* Export Options Banner */}
                 <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 shadow-sm">
-                  <h3 className="font-bold text-base mb-1">Экспорт руководства</h3>
+                  <h3 className="font-bold text-base mb-1">
+                    {uiLang === 'en' ? 'Export Guide' : 'Экспорт руководства'}
+                  </h3>
                   <p className="text-xs text-slate-500 mb-4">
-                    Выберите формат выгрузки: автономный однофайловый HTML с встроенными картинками
-                    или steps.json.
+                    {uiLang === 'en'
+                      ? 'Choose export format: standalone single-file HTML with embedded assets or steps.json.'
+                      : 'Выберите формат выгрузки: автономный однофайловый HTML с встроенными картинками или steps.json.'}
                   </p>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -813,12 +985,15 @@ export default function App() {
                           <Download className="w-4 h-4 group-hover:translate-y-0.5 transition" />
                         </div>
                         <p className="text-xs text-teal-100">
-                          Автономный HTML со всеми применёнными масками и размытием конфиденциальных
-                          зон. Идеален для публичной ссылки.
+                          {uiLang === 'en'
+                            ? 'Standalone HTML with all privacy masks and blur areas applied. Ideal for sharing publicly.'
+                            : 'Автономный HTML со всеми применёнными масками и размытием конфиденциальных зон. Идеален для публичной ссылки.'}
                         </p>
                       </div>
                       <span className="mt-3 text-[11px] font-semibold text-teal-200">
-                        Рекомендуется для публикации →
+                        {uiLang === 'en'
+                          ? 'Recommended for publishing →'
+                          : 'Рекомендуется для публикации →'}
                       </span>
                     </button>
 
@@ -828,16 +1003,19 @@ export default function App() {
                     >
                       <div>
                         <div className="flex items-center justify-between mb-2">
-                          <span className="font-bold text-sm">guide.html (Полный)</span>
+                          <span className="font-bold text-sm">
+                            guide.html ({uiLang === 'en' ? 'Full' : 'Полный'})
+                          </span>
                           <Download className="w-4 h-4 group-hover:translate-y-0.5 transition" />
                         </div>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Автономный HTML без размытия, с исходным качеством скриншотов. Для
-                          внутреннего использования.
+                          {uiLang === 'en'
+                            ? 'Autonomous HTML without blur, in original screenshot quality. For internal use.'
+                            : 'Автономный HTML без размытия, с исходным качеством скриншотов. Для внутреннего использования.'}
                         </p>
                       </div>
                       <span className="mt-3 text-[11px] font-semibold text-teal-600 dark:text-teal-400">
-                        Скачать без блюра →
+                        {uiLang === 'en' ? 'Download without blur →' : 'Скачать без блюра →'}
                       </span>
                     </button>
 
@@ -847,16 +1025,19 @@ export default function App() {
                     >
                       <div>
                         <div className="flex items-center justify-between mb-2">
-                          <span className="font-bold text-sm">steps.json (Совместимость)</span>
+                          <span className="font-bold text-sm">
+                            steps.json ({uiLang === 'en' ? 'Compatibility' : 'Совместимость'})
+                          </span>
                           <FileCode className="w-4 h-4 group-hover:translate-y-0.5 transition" />
                         </div>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          100% совместимый JSON для Python-скрипта build_guide.py с координатами в
-                          пикселях от display_width: 2000.
+                          {uiLang === 'en'
+                            ? '100% compatible JSON for Python script build_guide.py with coordinates based on display_width: 2000.'
+                            : '100% совместимый JSON для Python-скрипта build_guide.py с координатами в пикселях от display_width: 2000.'}
                         </p>
                       </div>
                       <span className="mt-3 text-[11px] font-semibold text-teal-600 dark:text-teal-400">
-                        Выгрузить steps.json →
+                        {uiLang === 'en' ? 'Export steps.json →' : 'Выгрузить steps.json →'}
                       </span>
                     </button>
                   </div>
@@ -865,9 +1046,14 @@ export default function App() {
                 {/* Embedded Live Player Preview */}
                 <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 shadow-sm">
                   <h4 className="font-bold text-sm mb-3 flex items-center gap-2">
-                    <Play className="w-4 h-4 text-teal-600" /> Живой интерактивный просмотр
+                    <Play className="w-4 h-4 text-teal-600" />
+                    {uiLang === 'en' ? 'Live Interactive Simulator Preview' : 'Живой интерактивный просмотр'}
                   </h4>
-                  <LivePlayerPreview project={activeProject} screenshots={screenshots} />
+                  <LivePlayerPreview
+                    project={activeProject}
+                    screenshots={screenshots}
+                    uiLang={uiLang}
+                  />
                 </div>
               </div>
             )}
@@ -884,8 +1070,23 @@ export default function App() {
           screenshots={screenshots}
           activeStep={activeProject.steps[selectedStepIndex]}
           onUpdateProject={handleUpdateProject}
+          uiLang={uiLang}
         />
       )}
+
+      {/* Welcome Tour Modal */}
+      <WelcomeTourModal
+        isOpen={isWelcomeOpen}
+        onClose={() => {
+          markWelcomeTourSeen();
+          setIsWelcomeOpen(false);
+        }}
+        uiLang={uiLang}
+        onToggleUiLang={(l) => {
+          setUiLang(l);
+          saveUiLang(l);
+        }}
+      />
     </div>
   );
 }
@@ -903,6 +1104,7 @@ function StepEditorPanel({
   onUpdateScreenshot,
   onOpenAiModal,
   showStatus,
+  uiLang = 'en',
 }: {
   project: GuideProject;
   step: GuideStep;
@@ -913,6 +1115,7 @@ function StepEditorPanel({
   onUpdateScreenshot: (screenshotId: string, updates: Partial<ScreenshotAsset>) => Promise<void>;
   onOpenAiModal: () => void;
   showStatus: (msg: string) => void;
+  uiLang?: 'en' | 'ru';
 }) {
   const currentAsset = screenshots.find((s) => s.id === step.screenshotId) || screenshots[0];
   const [imageUrl, setImageUrl] = useState<string>('');
@@ -926,9 +1129,16 @@ function StepEditorPanel({
 
   // Voice Dictation
   const [isDictating, setIsDictating] = useState<boolean>(false);
-  const [dictationLang, setDictationLang] = useState<'ru-RU' | 'en-US'>('ru-RU');
+  const [dictationLang, setDictationLang] = useState<'ru-RU' | 'en-US'>(
+    uiLang === 'en' ? 'en-US' : 'ru-RU'
+  );
   const [liveTranscript, setLiveTranscript] = useState<string>('');
   const voiceControllerRef = useRef<VoiceDictationController | null>(null);
+
+  // Sync dictationLang with uiLang
+  useEffect(() => {
+    setDictationLang(uiLang === 'en' ? 'en-US' : 'ru-RU');
+  }, [uiLang]);
 
   // AI Micro-crop status
   const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
@@ -952,7 +1162,11 @@ function StepEditorPanel({
   // Voice Dictation toggle
   const handleToggleVoice = () => {
     if (!isSpeechRecognitionSupported()) {
-      showStatus('Web Speech API не поддерживается текущим браузером (рекомендуется Chrome или Edge)');
+      showStatus(
+        uiLang === 'en'
+          ? 'Web Speech API is not supported in this browser (Chrome or Edge recommended)'
+          : 'Web Speech API не поддерживается текущим браузером (рекомендуется Chrome или Edge)'
+      );
       return;
     }
 
@@ -968,7 +1182,11 @@ function StepEditorPanel({
           en: parsed.en,
           voiceDraft: parsed.rawTranscript,
         });
-        showStatus(`Голос распознан: ${parsed.ru}`);
+        showStatus(
+          uiLang === 'en'
+            ? `Voice recognized: ${parsed.en}`
+            : `Голос распознан: ${parsed.ru}`
+        );
       };
       controller.onStateChange = (listening) => {
         setIsDictating(listening);
@@ -979,7 +1197,11 @@ function StepEditorPanel({
       controller.onError = (err) => {
         console.warn('Voice error:', err);
         setIsDictating(false);
-        showStatus('Ошибка микрофона или распознавания речи');
+        showStatus(
+          uiLang === 'en'
+            ? 'Microphone or speech recognition error'
+            : 'Ошибка микрофона или распознавания речи'
+        );
       };
       voiceControllerRef.current = controller;
     }
@@ -989,7 +1211,11 @@ function StepEditorPanel({
     } else {
       voiceControllerRef.current.setLanguage(dictationLang);
       voiceControllerRef.current.start();
-      showStatus(`Слушаю (${dictationLang === 'ru-RU' ? 'RU' : 'EN'})... Говорите команду (например: "Нажмите Создать")`);
+      showStatus(
+        uiLang === 'en'
+          ? `Listening (${dictationLang === 'ru-RU' ? 'RU' : 'EN'})... Speak your command (e.g. "Click Create")`
+          : `Слушаю (${dictationLang === 'ru-RU' ? 'RU' : 'EN'})... Говорите команду (например: "Нажмите Создать")`
+      );
     }
   };
 
@@ -1006,12 +1232,20 @@ function StepEditorPanel({
     const { apiKey, model } = getGeminiSettings();
     if (!apiKey || !apiKey.trim()) {
       onOpenAiModal();
-      showStatus('Укажите ключ Gemini API в настройках ИИ');
+      showStatus(
+        uiLang === 'en'
+          ? 'Please enter Gemini API key in AI settings'
+          : 'Укажите ключ Gemini API в настройках ИИ'
+      );
       return;
     }
 
     if (!currentAsset?.blob) {
-      showStatus('Для этого шага не найдено изображение кадра');
+      showStatus(
+        uiLang === 'en'
+          ? 'No screenshot asset image found for this step'
+          : 'Для этого шага не найдено изображение кадра'
+      );
       return;
     }
 
@@ -1027,12 +1261,22 @@ function StepEditorPanel({
       onUpdateStep({
         ru: result.ru,
         en: result.en,
-        voiceDraft: result.buttonLabel ? `Элемент: ${result.buttonLabel}` : step.voiceDraft,
+        voiceDraft: result.buttonLabel
+          ? `${uiLang === 'en' ? 'Element' : 'Элемент'}: ${result.buttonLabel}`
+          : step.voiceDraft,
       });
-      showStatus('✨ Описание успешно сгенерировано по микро-кропу!');
+      showStatus(
+        uiLang === 'en'
+          ? '✨ Description generated via micro-crop!'
+          : '✨ Описание успешно сгенерировано по микро-кропу!'
+      );
     } catch (err: unknown) {
       console.error(err);
-      showStatus(`Ошибка ИИ: ${err instanceof Error ? err.message : String(err)}`);
+      showStatus(
+        uiLang === 'en'
+          ? `AI error: ${err instanceof Error ? err.message : String(err)}`
+          : `Ошибка ИИ: ${err instanceof Error ? err.message : String(err)}`
+      );
     } finally {
       setIsAiLoading(false);
     }
@@ -1093,22 +1337,34 @@ function StepEditorPanel({
 
     if (drawTool === 'target') {
       onUpdateStep({ box: finalBox });
-      showStatus('Рамка шага обновлена');
+      showStatus(uiLang === 'en' ? 'Target box updated' : 'Рамка шага обновлена');
     } else if (drawTool === 'step_blur') {
       if (currentAsset) {
         const nextBlur = [...(currentAsset.blurBoxes || []), finalBox];
         await onUpdateScreenshot(currentAsset.id, { blurBoxes: nextBlur });
-        showStatus('🌫 Добавлено локальное размытие на этом кадре');
+        showStatus(
+          uiLang === 'en'
+            ? '🌫 Step blur added to this frame'
+            : '🌫 Добавлено локальное размытие на этом кадре'
+        );
       }
     } else if (drawTool === 'global_blur') {
       const nextGlobal = [...(project.globalBlurBoxes || []), finalBox];
       await onUpdateProject({ globalBlurBoxes: nextGlobal });
-      showStatus('📌 Добавлено сквозное размытие на все кадры');
+      showStatus(
+        uiLang === 'en'
+          ? '📌 Global blur added across all frames'
+          : '📌 Добавлено сквозное размытие на все кадры'
+      );
     } else if (drawTool === 'mask') {
       if (currentAsset) {
         const nextMasks = [...(currentAsset.maskBoxes || []), finalBox];
         await onUpdateScreenshot(currentAsset.id, { maskBoxes: nextMasks });
-        showStatus('🎨 Добавлена маска-плашка на этом кадре');
+        showStatus(
+          uiLang === 'en'
+            ? '🎨 Mask patch added to this frame'
+            : '🎨 Добавлена маска-плашка на этом кадре'
+        );
       }
     }
   }
@@ -1119,14 +1375,14 @@ function StepEditorPanel({
     if (!currentAsset) return;
     const nextBlur = (currentAsset.blurBoxes || []).filter((_, i) => i !== idx);
     await onUpdateScreenshot(currentAsset.id, { blurBoxes: nextBlur });
-    showStatus('Локальное размытие удалено');
+    showStatus(uiLang === 'en' ? 'Step blur removed' : 'Локальное размытие удалено');
   };
 
   const handleDeleteGlobalBlur = async (idx: number, e: React.MouseEvent) => {
     e.stopPropagation();
     const nextGlobal = (project.globalBlurBoxes || []).filter((_, i) => i !== idx);
     await onUpdateProject({ globalBlurBoxes: nextGlobal });
-    showStatus('Сквозное размытие удалено');
+    showStatus(uiLang === 'en' ? 'Global blur removed' : 'Сквозное размытие удалено');
   };
 
   const handleDeleteMask = async (idx: number, e: React.MouseEvent) => {
@@ -1134,7 +1390,7 @@ function StepEditorPanel({
     if (!currentAsset) return;
     const nextMasks = (currentAsset.maskBoxes || []).filter((_, i) => i !== idx);
     await onUpdateScreenshot(currentAsset.id, { maskBoxes: nextMasks });
-    showStatus('Маска удалена');
+    showStatus(uiLang === 'en' ? 'Mask removed' : 'Маска удалена');
   };
 
   return (
@@ -1151,15 +1407,31 @@ function StepEditorPanel({
                   ? 'bg-red-600 text-white animate-pulse'
                   : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
               }`}
-              title="Нажмите, чтобы продиктовать голосом действие и название кнопки"
+              title={
+                uiLang === 'en'
+                  ? 'Click to dictate step action and button name with your voice'
+                  : 'Нажмите, чтобы продиктовать голосом действие и название кнопки'
+              }
             >
               {isDictating ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5 text-slate-400" />}
-              <span>{isDictating ? '🔴 Идёт запись...' : '🎤 Диктовать голосом'}</span>
+              <span>
+                {isDictating
+                  ? uiLang === 'en'
+                    ? '🔴 Recording...'
+                    : '🔴 Идёт запись...'
+                  : uiLang === 'en'
+                  ? '🎤 Voice Dictate'
+                  : '🎤 Диктовать голосом'}
+              </span>
             </button>
             <button
               onClick={handleToggleVoiceLang}
               className="px-2 py-1.5 text-[11px] font-bold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600 border-l border-slate-200 dark:border-slate-600 transition"
-              title="Переключить язык распознавания (RU / EN)"
+              title={
+                uiLang === 'en'
+                  ? 'Toggle voice recognition language (RU / EN)'
+                  : 'Переключить язык распознавания (RU / EN)'
+              }
             >
               {dictationLang === 'ru-RU' ? 'RU' : 'EN'}
             </button>
@@ -1170,14 +1442,26 @@ function StepEditorPanel({
             onClick={handleAiDescribe}
             disabled={isAiLoading}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-gradient-to-r from-teal-600 to-indigo-600 hover:from-teal-500 hover:to-indigo-500 text-white shadow-xs transition disabled:opacity-50"
-            title="Автоматически определить надпись на кнопке в рамке и сгенерировать описания RU/EN"
+            title={
+              uiLang === 'en'
+                ? 'Automatically detect button text in box and generate bilingual descriptions'
+                : 'Автоматически определить надпись на кнопке в рамке и сгенерировать описания RU/EN'
+            }
           >
             {isAiLoading ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
             ) : (
               <Wand2 className="w-3.5 h-3.5" />
             )}
-            <span>{isAiLoading ? 'ИИ думает...' : '✨ Авто-описание по микро-кропу'}</span>
+            <span>
+              {isAiLoading
+                ? uiLang === 'en'
+                  ? 'AI thinking...'
+                  : 'ИИ думает...'
+                : uiLang === 'en'
+                ? '✨ Describe Micro-Crop'
+                : '✨ Авто-описание по микро-кропу'}
+            </span>
           </button>
         </div>
 
@@ -1187,7 +1471,11 @@ function StepEditorPanel({
           className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-medium"
         >
           <Shield className="w-3.5 h-3.5" />
-          <span>Сквозные пресеты и пакетный ИИ →</span>
+          <span>
+            {uiLang === 'en'
+              ? 'Global Presets & Batch AI →'
+              : 'Сквозные пресеты и пакетный ИИ →'}
+          </span>
         </button>
       </div>
 
@@ -1195,7 +1483,9 @@ function StepEditorPanel({
       {isDictating && liveTranscript && (
         <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 p-2.5 rounded-lg text-xs text-red-700 dark:text-red-300 flex items-center gap-2 animate-fadeIn">
           <span className="w-2 h-2 rounded-full bg-red-600 animate-ping shrink-0" />
-          <span className="font-semibold shrink-0">Распознаётся:</span>
+          <span className="font-semibold shrink-0">
+            {uiLang === 'en' ? 'Recognizing:' : 'Распознаётся:'}
+          </span>
           <span className="italic truncate">{liveTranscript}</span>
         </div>
       )}
@@ -1203,23 +1493,27 @@ function StepEditorPanel({
       {/* Step Metadata Inputs */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <div>
-          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Действие (Act)</label>
+          <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+            {uiLang === 'en' ? 'Action Type (Act)' : 'Действие (Act)'}
+          </label>
           <select
             value={step.act}
             onChange={(e) => onUpdateStep({ act: e.target.value as ActionType })}
             className="w-full text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-semibold"
           >
-            <option value="click">click (Нажать)</option>
-            <option value="type">type (Ввести)</option>
-            <option value="drag">drag (Протянуть)</option>
-            <option value="select">select (Выбрать)</option>
-            <option value="scroll">scroll (Прокрутить)</option>
-            <option value="look">look (Обратить внимание)</option>
+            <option value="click">click ({uiLang === 'en' ? 'Click' : 'Нажать'})</option>
+            <option value="type">type ({uiLang === 'en' ? 'Type' : 'Ввести'})</option>
+            <option value="drag">drag ({uiLang === 'en' ? 'Drag' : 'Протянуть'})</option>
+            <option value="select">select ({uiLang === 'en' ? 'Select' : 'Выбрать'})</option>
+            <option value="scroll">scroll ({uiLang === 'en' ? 'Scroll' : 'Прокрутить'})</option>
+            <option value="look">look ({uiLang === 'en' ? 'Notice' : 'Обратить внимание'})</option>
           </select>
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Скриншот</label>
+          <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+            {uiLang === 'en' ? 'Screenshot' : 'Скриншот'}
+          </label>
           <select
             value={step.screenshotId}
             onChange={(e) => onUpdateStep({ screenshotId: e.target.value })}
@@ -1235,13 +1529,19 @@ function StepEditorPanel({
 
         <div className="md:col-span-2">
           <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-            Название раздела / главы (Оглавление)
+            {uiLang === 'en'
+              ? 'Chapter / Step Subtitle (TOC)'
+              : 'Название раздела / главы (Оглавление)'}
           </label>
           <input
             type="text"
             value={step.chapterTitle || ''}
             onChange={(e) => onUpdateStep({ chapterTitle: e.target.value })}
-            placeholder="например: 1. Подключение источника"
+            placeholder={
+              uiLang === 'en'
+                ? 'e.g. 1. Connect Data Source'
+                : 'например: 1. Подключение источника'
+            }
             className="w-full text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
           />
         </div>
@@ -1251,7 +1551,7 @@ function StepEditorPanel({
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200 dark:border-slate-700/60">
         <div className="flex items-center gap-1.5 text-xs">
           <span className="font-semibold text-slate-600 dark:text-slate-400 mr-1 text-[11px]">
-            Инструмент мыши на холсте:
+            {uiLang === 'en' ? 'Mouse drawing tool:' : 'Инструмент мыши на холсте:'}
           </span>
 
           <button
@@ -1264,7 +1564,7 @@ function StepEditorPanel({
             }`}
           >
             <span className="w-2 h-2 rounded-full bg-red-400" />
-            <span>🔴 Рамка шага (Target Box)</span>
+            <span>{uiLang === 'en' ? '🔴 Target Box' : '🔴 Рамка шага (Target Box)'}</span>
           </button>
 
           <button
@@ -1277,7 +1577,7 @@ function StepEditorPanel({
             }`}
           >
             <span className="w-2 h-2 rounded-full bg-amber-400" />
-            <span>🌫 Блюр на этом кадре (Step Blur)</span>
+            <span>{uiLang === 'en' ? '🌫 Step Blur' : '🌫 Блюр на этом кадре (Step Blur)'}</span>
           </button>
 
           <button
@@ -1290,7 +1590,7 @@ function StepEditorPanel({
             }`}
           >
             <span className="w-2 h-2 rounded-full bg-purple-400" />
-            <span>📌 Сквозной блюр на все кадры</span>
+            <span>{uiLang === 'en' ? '📌 Global Blur (All)' : '📌 Сквозной блюр на все кадры'}</span>
           </button>
 
           <button
@@ -1303,14 +1603,19 @@ function StepEditorPanel({
             }`}
           >
             <Square className="w-3 h-3 text-slate-400" />
-            <span>🎨 Маска-ластик (Mask)</span>
+            <span>{uiLang === 'en' ? '🎨 Mask Patch' : '🎨 Маска-ластик (Mask)'}</span>
           </button>
         </div>
 
         <div className="text-[11px] text-slate-400 flex items-center gap-2">
-          <span>Сквозных: {project.globalBlurBoxes?.length || 0}</span>
+          <span>
+            {uiLang === 'en' ? 'Global:' : 'Сквозных:'} {project.globalBlurBoxes?.length || 0}
+          </span>
           <span>•</span>
-          <span>Кадр: {(currentAsset?.blurBoxes?.length || 0) + (currentAsset?.maskBoxes?.length || 0)}</span>
+          <span>
+            {uiLang === 'en' ? 'Frame:' : 'Кадр:'}{' '}
+            {(currentAsset?.blurBoxes?.length || 0) + (currentAsset?.maskBoxes?.length || 0)}
+          </span>
         </div>
       </div>
 
@@ -1354,13 +1659,13 @@ function StepEditorPanel({
                 }}
               >
                 <span className="text-[9px] bg-purple-600 text-white font-semibold px-1 rounded absolute top-0 left-0">
-                  📌 сквозной
+                  {uiLang === 'en' ? '📌 global' : '📌 сквозной'}
                 </span>
                 <button
                   type="button"
                   onClick={(e) => handleDeleteGlobalBlur(i, e)}
                   className="absolute top-0 right-0 bg-red-600 text-white rounded-full p-0.5 hover:bg-red-700 opacity-80 hover:opacity-100 transition shadow"
-                  title="Удалить этот сквозной блюр"
+                  title={uiLang === 'en' ? 'Remove this global blur' : 'Удалить этот сквозной блюр'}
                 >
                   <X className="w-2.5 h-2.5" />
                 </button>
@@ -1380,13 +1685,13 @@ function StepEditorPanel({
                 }}
               >
                 <span className="text-[9px] bg-amber-500 text-black font-semibold px-1 rounded absolute top-0 left-0">
-                  🌫 кадр
+                  {uiLang === 'en' ? '🌫 frame' : '🌫 кадр'}
                 </span>
                 <button
                   type="button"
                   onClick={(e) => handleDeleteStepBlur(i, e)}
                   className="absolute top-0 right-0 bg-red-600 text-white rounded-full p-0.5 hover:bg-red-700 opacity-80 hover:opacity-100 transition shadow"
-                  title="Удалить это локальное размытие"
+                  title={uiLang === 'en' ? 'Remove this step blur' : 'Удалить это локальное размытие'}
                 >
                   <X className="w-2.5 h-2.5" />
                 </button>
@@ -1406,13 +1711,13 @@ function StepEditorPanel({
                 }}
               >
                 <span className="text-[9px] bg-slate-700 text-white px-1 rounded absolute top-0 left-0">
-                  🎨 маска
+                  {uiLang === 'en' ? '🎨 mask' : '🎨 маска'}
                 </span>
                 <button
                   type="button"
                   onClick={(e) => handleDeleteMask(i, e)}
                   className="absolute top-0 right-0 bg-red-600 text-white rounded-full p-0.5 hover:bg-red-700 opacity-80 hover:opacity-100 transition shadow"
-                  title="Удалить эту маску"
+                  title={uiLang === 'en' ? 'Remove this mask' : 'Удалить эту маску'}
                 >
                   <X className="w-2.5 h-2.5" />
                 </button>
@@ -1439,46 +1744,66 @@ function StepEditorPanel({
             )}
           </div>
         ) : (
-          <div className="py-24 text-slate-500 text-xs">Нет привязанного изображения</div>
+          <div className="py-24 text-slate-500 text-xs">
+            {uiLang === 'en' ? 'No attached image' : 'Нет привязанного изображения'}
+          </div>
         )}
       </div>
 
       <p className="text-[11px] text-slate-400 text-center">
-        💡 Зажмите и потяните мышь по скриншоту выше, чтобы применить выбранный инструмент (
-        {drawTool === 'target'
-          ? '🔴 Рамка шага'
-          : drawTool === 'step_blur'
-          ? '🌫 Локальный блюр'
-          : drawTool === 'global_blur'
-          ? '📌 Сквозной блюр'
-          : '🎨 Маска-плашка'}
-        ).
+        {uiLang === 'en'
+          ? `💡 Click and drag mouse across the screenshot above to draw with the selected tool (${
+              drawTool === 'target'
+                ? '🔴 Target Box'
+                : drawTool === 'step_blur'
+                ? '🌫 Step Blur'
+                : drawTool === 'global_blur'
+                ? '📌 Global Blur'
+                : '🎨 Mask Patch'
+            }).`
+          : `💡 Зажмите и потяните мышь по скриншоту выше, чтобы применить выбранный инструмент (${
+              drawTool === 'target'
+                ? '🔴 Рамка шага'
+                : drawTool === 'step_blur'
+                ? '🌫 Локальный блюр'
+                : drawTool === 'global_blur'
+                ? '📌 Сквозной блюр'
+                : '🎨 Маска-плашка'
+            }).`}
       </p>
 
       {/* Russian and English texts */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
           <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-            Инструкция на русском (RU)
+            {uiLang === 'en' ? 'Russian Instruction (RU)' : 'Инструкция на русском (RU)'}
           </label>
           <textarea
             rows={3}
             value={step.ru}
             onChange={(e) => onUpdateStep({ ru: e.target.value })}
-            placeholder="Нажмите <b>+ Создать</b> для добавления элемента..."
+            placeholder={
+              uiLang === 'en'
+                ? 'e.g. Нажмите <b>+ Создать</b> для добавления элемента...'
+                : 'Нажмите <b>+ Создать</b> для добавления элемента...'
+            }
             className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
           />
         </div>
 
         <div>
           <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-            Instruction in English (EN)
+            {uiLang === 'en' ? 'English Instruction (EN)' : 'Инструкция на английском (EN)'}
           </label>
           <textarea
             rows={3}
             value={step.en}
             onChange={(e) => onUpdateStep({ en: e.target.value })}
-            placeholder="Click <b>+ New</b> to add a new item..."
+            placeholder={
+              uiLang === 'en'
+                ? 'Click <b>+ New</b> to add a new item...'
+                : 'Например: Click <b>+ New</b> to add a new item...'
+            }
             className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
           />
         </div>
@@ -1494,12 +1819,14 @@ function StepEditorPanel({
             className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
           />
           <span className="text-slate-700 dark:text-slate-300">
-            Не вырезать из блюра (keepBlur — оставить размытие поверх этой зоны)
+            {uiLang === 'en'
+              ? 'Keep blur active during this step (do not uncover target element from blur)'
+              : 'Не вырезать из блюра (keepBlur — оставить размытие поверх этой зоны)'}
           </span>
         </label>
 
         <span className="text-slate-400 font-mono text-[11px]">
-          Рамка: [{step.box.x}%, {step.box.y}%, {step.box.w}%, {step.box.h}%]
+          {uiLang === 'en' ? 'Box' : 'Рамка'}: [{step.box.x}%, {step.box.y}%, {step.box.w}%, {step.box.h}%]
         </span>
       </div>
     </div>
@@ -1512,16 +1839,24 @@ function StepEditorPanel({
 function LivePlayerPreview({
   project,
   screenshots,
+  uiLang = 'en',
 }: {
   project: GuideProject;
   screenshots: ScreenshotAsset[];
+  uiLang?: 'en' | 'ru';
 }) {
   const [currentStepIdx, setCurrentStepIdx] = useState<number>(0);
-  const [lang, setLang] = useState<'ru' | 'en'>(project.defaultLang || 'ru');
+  const [lang, setLang] = useState<'ru' | 'en'>(
+    project.defaultLang || (uiLang === 'en' ? 'en' : 'ru')
+  );
   const [trainerMode, setTrainerMode] = useState<boolean>(true);
 
   if (project.steps.length === 0) {
-    return <div className="text-center py-12 text-slate-500 text-xs">В проекте нет шагов</div>;
+    return (
+      <div className="text-center py-12 text-slate-500 text-xs">
+        {uiLang === 'en' ? 'No steps in this guide' : 'В проекте нет шагов'}
+      </div>
+    );
   }
 
   const s = project.steps[currentStepIdx] || project.steps[0];
@@ -1533,7 +1868,9 @@ function LivePlayerPreview({
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-            Шаг {currentStepIdx + 1} из {project.steps.length}
+            {uiLang === 'en'
+              ? `Step ${currentStepIdx + 1} of ${project.steps.length}`
+              : `Шаг ${currentStepIdx + 1} из ${project.steps.length}`}
           </span>
           {s.chapterTitle && (
             <span className="text-[10px] bg-slate-200 dark:bg-slate-800 text-teal-600 dark:text-teal-400 font-semibold px-2 py-0.5 rounded">
@@ -1551,7 +1888,13 @@ function LivePlayerPreview({
                 : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300'
             }`}
           >
-            {trainerMode ? '🎯 Тренажёр: Вкл' : 'Обзор: Вкл'}
+            {trainerMode
+              ? uiLang === 'en'
+                ? '🎯 Simulator: On'
+                : '🎯 Тренажёр: Вкл'
+              : uiLang === 'en'
+              ? 'Browse: On'
+              : 'Обзор: Вкл'}
           </button>
 
           <div className="inline-flex rounded-lg border border-slate-300 dark:border-slate-700 overflow-hidden text-xs">
@@ -1580,7 +1923,9 @@ function LivePlayerPreview({
         {shotUrl ? (
           <img src={shotUrl} alt="" className="w-full h-auto block" />
         ) : (
-          <div className="h-64 flex items-center justify-center text-slate-500">Нет кадра</div>
+          <div className="h-64 flex items-center justify-center text-slate-500">
+            {uiLang === 'en' ? 'No frame image' : 'Нет кадра'}
+          </div>
         )}
 
         {/* Pulsing Highlight Box */}
@@ -1598,7 +1943,13 @@ function LivePlayerPreview({
             height: `${s.box.h}%`,
             boxShadow: '0 0 0 9999px rgba(0,0,0,0.3)',
           }}
-          title={trainerMode ? 'Кликните сюда для перехода к следующему шагу' : ''}
+          title={
+            trainerMode
+              ? uiLang === 'en'
+                ? 'Click here to proceed to the next step'
+                : 'Кликните сюда для перехода к следующему шагу'
+              : ''
+          }
         />
       </div>
 
@@ -1613,7 +1964,9 @@ function LivePlayerPreview({
           </span>
           <p
             className="text-sm font-medium text-slate-800 dark:text-slate-100"
-            dangerouslySetInnerHTML={{ __html: s[lang] || s.ru || s.en || '' }}
+            dangerouslySetInnerHTML={{
+              __html: (lang === 'en' ? s.en || s.ru : s.ru || s.en) || '',
+            }}
           />
         </div>
       </div>
@@ -1625,7 +1978,7 @@ function LivePlayerPreview({
           disabled={currentStepIdx === 0}
           className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold disabled:opacity-30"
         >
-          ← Назад
+          {uiLang === 'en' ? '← Back' : '← Назад'}
         </button>
 
         <div className="flex gap-1.5 flex-wrap justify-center">
@@ -1648,7 +2001,13 @@ function LivePlayerPreview({
           }
           className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold"
         >
-          {currentStepIdx === project.steps.length - 1 ? 'Сначала' : 'Далее →'}
+          {currentStepIdx === project.steps.length - 1
+            ? uiLang === 'en'
+              ? 'Restart'
+              : 'Сначала'
+            : uiLang === 'en'
+            ? 'Next →'
+            : 'Далее →'}
         </button>
       </div>
     </div>

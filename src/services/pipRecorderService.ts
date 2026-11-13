@@ -83,11 +83,11 @@ export function syncStylesToPip(pipWin: Window) {
     pipWin.document.body.style.color = '#f8fafc';
     pipWin.document.body.style.fontFamily =
       'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
-    pipWin.document.body.style.overflow = 'hidden';
+    pipWin.document.body.style.overflow = 'auto';
     pipWin.document.body.style.userSelect = 'none';
 
     // Set title
-    pipWin.document.title = 'Live Guide Remote · Recording';
+    pipWin.document.title = 'Live Guide Remote · Always on Top';
   } catch (err) {
     console.warn('Error syncing styles to PiP window:', err);
   }
@@ -111,8 +111,8 @@ export async function openPipWindow(options?: {
     return activePipWindow;
   }
 
-  const width = options?.width || 380;
-  const height = options?.height || 540;
+  const width = options?.width || 520;
+  const height = options?.height || 640;
 
   try {
     const pipWin = await window.documentPictureInPicture!.requestWindow({
