@@ -96,6 +96,7 @@ export default function App() {
   });
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isAiModalOpen, setIsAiModalOpen] = useState<boolean>(false);
+  const [sidebarMode, setSidebarMode] = useState<'full' | 'compact' | 'hidden'>('full');
 
   // Folder & HTML import input refs
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -609,7 +610,8 @@ export default function App() {
       )}
 
       {/* Header */}
-      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 py-3.5 flex items-center justify-between shadow-sm">
+      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shadow-sm w-full">
+        <div className="w-full max-w-[1920px] mx-auto px-3 sm:px-5 lg:px-6 py-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-teal-600 text-white flex items-center justify-center font-bold text-lg shadow">
             G
@@ -724,10 +726,11 @@ export default function App() {
             {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
         </div>
+      </div>
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col p-6 max-w-7xl w-full mx-auto">
+      <main className="flex-1 flex flex-col py-4 sm:py-5 px-3 sm:px-5 lg:px-6 w-full max-w-[1920px] mx-auto">
         {!activeProject ? (
           /* ================= DASHBOARD VIEW ================= */
           <div className="space-y-6">
@@ -973,10 +976,51 @@ export default function App() {
 
             {/* Tab 2: Visual Step Editor */}
             {activeTab === 'editor' && (
-              <div className="space-y-4">
+              <div className="space-y-4 flex-1 flex flex-col">
                 {/* Secondary toolbar for Editor Tab */}
-                <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 shadow-sm">
-                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+                  <div className="flex items-center gap-2.5 text-xs text-slate-500">
+                    {/* If sidebar is hidden, show prominent button to restore it */}
+                    {sidebarMode === 'hidden' && (
+                      <button
+                        onClick={() => setSidebarMode('full')}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900 border border-teal-300 dark:border-teal-700 shadow-2xs transition"
+                        title={uiLang === 'en' ? 'Show steps list' : 'Показать список шагов'}
+                      >
+                        <span>▶</span>
+                        <span>
+                          {uiLang === 'en'
+                            ? `Show Steps List (${activeProject.steps.length})`
+                            : `Показать список шагов (${activeProject.steps.length})`}
+                        </span>
+                      </button>
+                    )}
+
+                    {/* Quick Step Flipper when sidebar is hidden */}
+                    {sidebarMode === 'hidden' && activeProject.steps.length > 0 && (
+                      <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700/80 p-0.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-600">
+                        <button
+                          onClick={() => setSelectedStepIndex((prev) => Math.max(0, prev - 1))}
+                          disabled={selectedStepIndex === 0}
+                          className="p-1 hover:text-teal-600 disabled:opacity-30 transition"
+                          title={uiLang === 'en' ? 'Previous step' : 'Предыдущий шаг'}
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="px-2 font-mono text-[11px] text-slate-700 dark:text-slate-200">
+                          {selectedStepIndex + 1} / {activeProject.steps.length}
+                        </span>
+                        <button
+                          onClick={() => setSelectedStepIndex((prev) => Math.min(activeProject.steps.length - 1, prev + 1))}
+                          disabled={selectedStepIndex >= activeProject.steps.length - 1}
+                          className="p-1 hover:text-teal-600 disabled:opacity-30 transition"
+                          title={uiLang === 'en' ? 'Next step' : 'Следующий шаг'}
+                        >
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+
                     <span className="font-semibold text-slate-700 dark:text-slate-200">
                       {uiLang === 'en' ? 'Step Editing:' : 'Редактирование шагов:'}
                     </span>
@@ -1018,105 +1062,174 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1">
-                  {/* Left: Step list */}
-                  <div className="lg:col-span-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4 flex flex-col h-[780px]">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">
-                        {uiLang === 'en'
-                          ? `Steps (${activeProject.steps.length})`
-                          : `Шаги (${activeProject.steps.length})`}
-                      </h3>
-                      <button
-                        onClick={() => handleAddStep()}
-                        className="bg-teal-600 hover:bg-teal-700 text-white px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        {uiLang === 'en' ? 'Add' : 'Добавить'}
-                      </button>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-                      {activeProject.steps.length === 0 ? (
-                        <div className="text-center py-12 text-slate-400 text-xs">
+                {/* Flexible Step Editor Layout: Full / Compact / Hidden */}
+                <div className="flex flex-col lg:flex-row gap-4 items-stretch flex-1 min-h-0">
+                  {/* Left: Step list (Full Mode) */}
+                  {sidebarMode === 'full' && (
+                    <div className="lg:w-72 shrink-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 flex flex-col h-[820px] shadow-sm transition-all duration-200">
+                      <div className="flex items-center justify-between mb-3 gap-1">
+                        <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100 truncate">
                           {uiLang === 'en'
-                            ? 'No steps yet. Go to "1. Capture" tab to record your screen or click "+ Add".'
-                            : 'Нет шагов. Перейдите во вкладку «1. Запись» для захвата экрана или нажмите «+ Добавить».'}
+                            ? `Steps (${activeProject.steps.length})`
+                            : `Шаги (${activeProject.steps.length})`}
+                        </h3>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => handleAddStep()}
+                            className="bg-teal-600 hover:bg-teal-700 text-white px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-0.5 transition"
+                            title={uiLang === 'en' ? 'Add Step' : 'Добавить шаг'}
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">{uiLang === 'en' ? 'Add' : 'Добавить'}</span>
+                          </button>
+                          <button
+                            onClick={() => setSidebarMode('compact')}
+                            className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1 border border-slate-200 dark:border-slate-600"
+                            title={uiLang === 'en' ? 'Compact sidebar (narrow strip)' : 'Свернуть в узкую полоску'}
+                          >
+                            <span>◀</span>
+                            <span className="text-[10px] hidden sm:inline">{uiLang === 'en' ? 'Compact' : 'Узко'}</span>
+                          </button>
+                          <button
+                            onClick={() => setSidebarMode('hidden')}
+                            className="p-1 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-bold transition"
+                            title={uiLang === 'en' ? 'Hide sidebar (100% canvas)' : 'Скрыть боковую панель (100% холст)'}
+                          >
+                            ✕
+                          </button>
                         </div>
-                      ) : (
-                        activeProject.steps.map((st, idx) => {
-                          const isSelected = idx === selectedStepIndex;
-                          return (
-                            <div
-                              key={st.id}
-                              onClick={() => setSelectedStepIndex(idx)}
-                              className={`p-3 rounded-xl border text-xs cursor-pointer transition flex items-start justify-between gap-2 ${
-                                isSelected
-                                  ? 'bg-teal-50 dark:bg-teal-950/40 border-teal-500 text-slate-900 dark:text-slate-100 shadow-sm'
-                                  : 'bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                              }`}
-                            >
-                              <div className="flex items-start gap-2.5 min-w-0">
-                                <span
-                                  className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
-                                    isSelected
-                                      ? 'bg-teal-600 text-white'
-                                      : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
-                                  }`}
-                                >
-                                  {idx + 1}
-                                </span>
-                                <div className="min-w-0">
-                                  {st.chapterTitle && (
-                                    <span className="text-[10px] font-semibold text-teal-600 dark:text-teal-400 block truncate">
-                                      {st.chapterTitle}
-                                    </span>
-                                  )}
-                                  <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 mb-1">
-                                    {st.act}
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                        {activeProject.steps.length === 0 ? (
+                          <div className="text-center py-12 text-slate-400 text-xs">
+                            {uiLang === 'en'
+                              ? 'No steps yet. Go to "1. Capture" tab to record your screen or click "+ Add".'
+                              : 'Нет шагов. Перейдите во вкладку «1. Запись» для захвата экрана или нажмите «+ Добавить».'}
+                          </div>
+                        ) : (
+                          activeProject.steps.map((st, idx) => {
+                            const isSelected = idx === selectedStepIndex;
+                            return (
+                              <div
+                                key={st.id}
+                                onClick={() => setSelectedStepIndex(idx)}
+                                className={`p-2.5 rounded-xl border text-xs cursor-pointer transition flex items-start justify-between gap-2 ${
+                                  isSelected
+                                    ? 'bg-teal-50 dark:bg-teal-950/40 border-teal-500 text-slate-900 dark:text-slate-100 shadow-sm'
+                                    : 'bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                                }`}
+                              >
+                                <div className="flex items-start gap-2 min-w-0">
+                                  <span
+                                    className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
+                                      isSelected
+                                        ? 'bg-teal-600 text-white'
+                                        : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                                    }`}
+                                  >
+                                    {idx + 1}
                                   </span>
-                                  <p className="truncate text-slate-700 dark:text-slate-300">
-                                    {uiLang === 'en'
-                                      ? st.en || st.ru || '(no text)'
-                                      : st.ru || st.en || '(без текста)'}
-                                  </p>
+                                  <div className="min-w-0">
+                                    {st.chapterTitle && (
+                                      <span className="text-[10px] font-semibold text-teal-600 dark:text-teal-400 block truncate">
+                                        {st.chapterTitle}
+                                      </span>
+                                    )}
+                                    <span className="inline-block px-1.5 py-0.2 rounded text-[9px] font-semibold uppercase bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 mb-0.5">
+                                      {st.act}
+                                    </span>
+                                    <p className="truncate text-slate-700 dark:text-slate-300 text-[11px]">
+                                      {uiLang === 'en'
+                                        ? st.en || st.ru || '(no text)'
+                                        : st.ru || st.en || '(без текста)'}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-0.5 shrink-0">
+                                  <button
+                                    onClick={(e) => handleMoveStep(idx, 'up', e)}
+                                    disabled={idx === 0}
+                                    className="p-1 hover:text-teal-600 disabled:opacity-20"
+                                    title={uiLang === 'en' ? 'Move Up' : 'Переместить вверх'}
+                                  >
+                                    <ChevronUp className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => handleMoveStep(idx, 'down', e)}
+                                    disabled={idx === activeProject.steps.length - 1}
+                                    className="p-1 hover:text-teal-600 disabled:opacity-20"
+                                    title={uiLang === 'en' ? 'Move Down' : 'Переместить вниз'}
+                                  >
+                                    <ChevronDown className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => handleDeleteStep(idx, e)}
+                                    className="p-1 hover:text-red-500"
+                                    title={uiLang === 'en' ? 'Delete Step' : 'Удалить шаг'}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
                                 </div>
                               </div>
-
-                              <div className="flex items-center gap-1 shrink-0">
-                                <button
-                                  onClick={(e) => handleMoveStep(idx, 'up', e)}
-                                  disabled={idx === 0}
-                                  className="p-1 hover:text-teal-600 disabled:opacity-20"
-                                  title={uiLang === 'en' ? 'Move Up' : 'Переместить вверх'}
-                                >
-                                  <ChevronUp className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={(e) => handleMoveStep(idx, 'down', e)}
-                                  disabled={idx === activeProject.steps.length - 1}
-                                  className="p-1 hover:text-teal-600 disabled:opacity-20"
-                                  title={uiLang === 'en' ? 'Move Down' : 'Переместить вниз'}
-                                >
-                                  <ChevronDown className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={(e) => handleDeleteStep(idx, e)}
-                                  className="p-1 hover:text-red-500"
-                                  title={uiLang === 'en' ? 'Delete Step' : 'Удалить шаг'}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
+                            );
+                          })
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  {/* Right: Step details and Interactive Stage */}
-                  <div className="lg:col-span-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 flex flex-col space-y-4">
+                  {/* Left: Step list (Compact Mode: Narrow Strip with numbers) */}
+                  {sidebarMode === 'compact' && (
+                    <div className="lg:w-16 shrink-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2 flex flex-col items-center h-[820px] shadow-sm transition-all duration-200">
+                      <button
+                        onClick={() => setSidebarMode('full')}
+                        className="w-full py-1.5 mb-2 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900 border border-teal-200 dark:border-teal-800 font-bold text-xs flex items-center justify-center transition shadow-2xs"
+                        title={uiLang === 'en' ? 'Expand steps list' : 'Развернуть список шагов'}
+                      >
+                        ▶
+                      </button>
+                      <button
+                        onClick={() => handleAddStep()}
+                        className="w-10 h-10 mb-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center justify-center shadow-xs transition shrink-0"
+                        title={uiLang === 'en' ? 'Add Step' : 'Добавить шаг'}
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+
+                      <div className="flex-1 w-full overflow-y-auto space-y-2 pr-0.5 flex flex-col items-center">
+                        {activeProject.steps.map((st, idx) => {
+                          const isSelected = idx === selectedStepIndex;
+                          return (
+                            <button
+                              key={st.id}
+                              onClick={() => setSelectedStepIndex(idx)}
+                              className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs transition shrink-0 ${
+                                isSelected
+                                  ? 'bg-teal-600 text-white ring-2 ring-teal-400 shadow-md scale-105'
+                                  : 'bg-slate-100 dark:bg-slate-700/80 text-slate-700 dark:text-slate-300 hover:bg-teal-50 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600'
+                              }`}
+                              title={`Step ${idx + 1}: ${st.act.toUpperCase()} - ${uiLang === 'en' ? (st.en || st.ru || '') : (st.ru || st.en || '')}`}
+                            >
+                              {idx + 1}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <button
+                        onClick={() => setSidebarMode('hidden')}
+                        className="mt-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1 rounded text-xs"
+                        title={uiLang === 'en' ? 'Hide sidebar completely' : 'Полностью скрыть'}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Right: Step details and Interactive Stage (expands to 100% when hidden) */}
+                  <div className="flex-1 min-w-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4 sm:p-5 flex flex-col space-y-4 shadow-sm">
                     {activeProject.steps[selectedStepIndex] ? (
                       <StepEditorPanel
                         project={activeProject}
@@ -1429,6 +1542,10 @@ function StepEditorPanel({
 
   // Active mouse drawing tool for InteractiveBoxEditor
   const [drawMode, setDrawMode] = useState<EditorDrawTool>('target');
+
+  // Zoom & Canvas Height Expansion
+  const [zoom, setZoom] = useState<number>(100);
+  const [isTallCanvas, setIsTallCanvas] = useState<boolean>(false);
 
   // Voice Dictation
   const [isDictating, setIsDictating] = useState<boolean>(false);
@@ -1885,47 +2002,113 @@ function StepEditorPanel({
           )}
         </div>
 
-        <div className="text-[11px] text-slate-400 flex items-center gap-2">
-          <span>
-            {uiLang === 'en' ? 'Global:' : 'Сквозных:'} {project.globalBlurBoxes?.length || 0}
-          </span>
-          <span>•</span>
-          <span>
-            {uiLang === 'en' ? 'Frame:' : 'Кадр:'}{' '}
-            {(currentAsset?.blurBoxes?.length || 0) + (currentAsset?.maskBoxes?.length || 0)}
-          </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Zoom Buttons Group */}
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
+            <span className="text-[10px] font-semibold text-slate-500 px-1">
+              {uiLang === 'en' ? '🔍 Zoom:' : '🔍 Масштаб:'}
+            </span>
+            {[100, 140, 180, 220].map((z) => (
+              <button
+                key={z}
+                type="button"
+                onClick={() => setZoom(z)}
+                className={`px-2 py-0.5 rounded text-[11px] font-bold transition ${
+                  zoom === z
+                    ? 'bg-teal-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+                title={`Zoom ${z}%`}
+              >
+                {z}%
+              </button>
+            ))}
+          </div>
+
+          {/* Tall Canvas Button */}
+          <button
+            type="button"
+            onClick={() => setIsTallCanvas(!isTallCanvas)}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold border flex items-center gap-1 transition ${
+              isTallCanvas
+                ? 'bg-indigo-600 text-white border-indigo-500 shadow-xs'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+            title={
+              uiLang === 'en'
+                ? 'Toggle container height between standard (max 68vh) and tall viewport (82vh)'
+                : 'Переключить высоту контейнера между стандартной (max 68vh) и увеличенной (82vh)'
+            }
+          >
+            <span>↕️</span>
+            <span>
+              {isTallCanvas
+                ? uiLang === 'en'
+                  ? 'Standard Height'
+                  : 'Стандарт'
+                : uiLang === 'en'
+                ? 'Tall Canvas'
+                : 'Высокий холст'}
+            </span>
+          </button>
+
+          <div className="text-[11px] text-slate-400 flex items-center gap-1.5 ml-1">
+            <span>
+              {uiLang === 'en' ? 'Global:' : 'Сквозных:'} {project.globalBlurBoxes?.length || 0}
+            </span>
+            <span>•</span>
+            <span>
+              {uiLang === 'en' ? 'Frame:' : 'Кадр:'}{' '}
+              {(currentAsset?.blurBoxes?.length || 0) + (currentAsset?.maskBoxes?.length || 0)}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Visual Canvas stage with InteractiveBoxEditor */}
-      <div className="relative w-full aspect-video max-h-[560px] border border-slate-300 dark:border-slate-700 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-950 flex items-center justify-center shadow-inner">
-        {imageUrl ? (
-          <InteractiveBoxEditor
-            imageUrl={imageUrl}
-            box={step.box}
-            cursorPos={step.cursorPos || computeDefaultCursorPos(step.box)}
-            onChangeBoxAndCursor={(newBox, newCursorPos) => {
-              onUpdateStep({ box: newBox, cursorPos: newCursorPos });
-            }}
-            stepNumber={stepIndex + 1}
-            actionType={step.act}
-            drawMode={drawMode}
-            blurBoxes={currentAsset?.blurBoxes}
-            globalBlurBoxes={project.globalBlurBoxes}
-            maskBoxes={currentAsset?.maskBoxes}
-            onAddBlurBox={handleAddBlurBox}
-            onRemoveBlurBox={handleRemoveBlurBox}
-            onAddGlobalBlurBox={handleAddGlobalBlurBox}
-            onRemoveGlobalBlurBox={handleRemoveGlobalBlurBox}
-            onAddMaskBox={handleAddMaskBox}
-            onRemoveMaskBox={handleRemoveMaskBox}
-            uiLang={uiLang}
-          />
-        ) : (
-          <div className="py-24 text-slate-500 text-xs">
-            {uiLang === 'en' ? 'No attached image' : 'Нет привязанного изображения'}
-          </div>
-        )}
+      {/* Visual Canvas stage with InteractiveBoxEditor and Zoom & Height Expand */}
+      <div
+        className={`relative w-full border border-slate-300 dark:border-slate-700 rounded-xl overflow-auto bg-slate-900/95 dark:bg-slate-950 shadow-inner transition-all duration-200 flex ${
+          isTallCanvas ? 'h-[82vh] max-h-[82vh]' : 'h-[58vh] max-h-[68vh]'
+        }`}
+      >
+        <div
+          className="m-auto transition-all duration-150 flex items-center justify-center shrink-0"
+          style={{
+            width: zoom > 100 ? `${zoom}%` : '100%',
+            height: zoom > 100 ? `${zoom}%` : '100%',
+            minWidth: zoom > 100 ? `${zoom}%` : '100%',
+            minHeight: zoom > 100 ? `${zoom}%` : '100%',
+            aspectRatio: '16/9',
+          }}
+        >
+          {imageUrl ? (
+            <InteractiveBoxEditor
+              imageUrl={imageUrl}
+              box={step.box}
+              cursorPos={step.cursorPos || computeDefaultCursorPos(step.box)}
+              onChangeBoxAndCursor={(newBox, newCursorPos) => {
+                onUpdateStep({ box: newBox, cursorPos: newCursorPos });
+              }}
+              stepNumber={stepIndex + 1}
+              actionType={step.act}
+              drawMode={drawMode}
+              blurBoxes={currentAsset?.blurBoxes}
+              globalBlurBoxes={project.globalBlurBoxes}
+              maskBoxes={currentAsset?.maskBoxes}
+              onAddBlurBox={handleAddBlurBox}
+              onRemoveBlurBox={handleRemoveBlurBox}
+              onAddGlobalBlurBox={handleAddGlobalBlurBox}
+              onRemoveGlobalBlurBox={handleRemoveGlobalBlurBox}
+              onAddMaskBox={handleAddMaskBox}
+              onRemoveMaskBox={handleRemoveMaskBox}
+              uiLang={uiLang}
+            />
+          ) : (
+            <div className="py-24 text-slate-500 text-xs">
+              {uiLang === 'en' ? 'No attached image' : 'Нет привязанного изображения'}
+            </div>
+          )}
+        </div>
       </div>
 
       <p className="text-[11px] text-slate-400 text-center">
