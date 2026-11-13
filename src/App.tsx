@@ -15,31 +15,49 @@ import {
   ChevronDown,
   Sun,
   Moon,
-  Monitor,
   FileCode,
-  Image as ImageIcon,
+  Shield,
+  Mic,
+  MicOff,
+  Square,
+  Wand2,
+  X,
+  RefreshCw,
 } from 'lucide-react';
 
-import type { ActionType, GuideProject, GuideStep, ScreenshotAsset } from './types/guide';
+import type { ActionType, BoxRect, GuideProject, GuideStep, ScreenshotAsset } from './types/guide';
 import {
   addScreenshot,
   createDemoProject,
   createProject,
   db,
   deleteProject,
-  deleteScreenshot,
   generateId,
+  getProject,
   getScreenshotsForProject,
   listProjects,
   updateProject,
+  updateScreenshot,
 } from './db/database';
 import {
   exportStandaloneHtml,
   exportToLegacyJson,
   importFromLegacyFolder,
 } from './services/importerExporter';
+import { LiveCaptureWorkspace } from './components/capture/LiveCaptureWorkspace';
+import { AiAndPrivacyModal } from './components/editor/AiAndPrivacyModal';
+import {
+  getGeminiSettings,
+  describeStepWithGeminiMicroCrop,
+} from './services/aiAssistantService';
+import {
+  VoiceDictationController,
+  isSpeechRecognitionSupported,
+  type ParsedVoiceStep,
+} from './services/speechService';
 
 type ActiveTab = 'capture' | 'editor' | 'player';
+type EditorDrawTool = 'target' | 'step_blur' | 'global_blur' | 'mask';
 
 export default function App() {
   const [projects, setProjects] = useState<GuideProject[]>([]);
@@ -51,6 +69,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(true);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [isAiModalOpen, setIsAiModalOpen] = useState<boolean>(false);
 
   // Folder import input ref
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -110,7 +129,10 @@ export default function App() {
         setActiveProject(proj);
         const assets = await getScreenshotsForProject(projectId);
         setScreenshots(assets);
-        setSelectedStepIndex(0);
+        setSelectedStepIndex((prev) => {
+          if (proj.steps.length === 0) return 0;
+          return Math.min(prev, proj.steps.length - 1);
+        });
       } else {
         setActiveProjectId(null);
       }
@@ -119,6 +141,40 @@ export default function App() {
       showStatus('Ошибка при загрузке проекта');
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  const reloadActiveProject = async () => {
+    if (activeProjectId) {
+      await loadProjectDetails(activeProjectId);
+    }
+  };
+
+  async function handleUpdateProject(updates: Partial<GuideProject>) {
+    if (!activeProject) return;
+    try {
+      const updated = { ...activeProject, ...updates };
+      setActiveProject(updated);
+      await updateProject(activeProject.id, updates);
+      const fresh = await getProject(activeProject.id);
+      if (fresh) {
+        setActiveProject(fresh);
+      }
+    } catch (err) {
+      console.error('Failed to update project:', err);
+      showStatus('Ошибка при сохранении проекта');
+    }
+  }
+
+  async function handleUpdateScreenshot(screenshotId: string, updates: Partial<ScreenshotAsset>) {
+    if (!activeProject) return;
+    try {
+      await updateScreenshot(screenshotId, updates);
+      const freshList = await getScreenshotsForProject(activeProject.id);
+      setScreenshots(freshList);
+    } catch (err) {
+      console.error('Failed to update screenshot:', err);
+      showStatus('Ошибка при обновлении скриншота');
     }
   }
 
@@ -171,7 +227,7 @@ export default function App() {
     }
   }
 
-  // Handle Legacy Folder Import (steps.json + pngs)
+  // Handle Folder Import (steps.json + pngs)
   async function handleFolderSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -191,7 +247,7 @@ export default function App() {
     }
   }
 
-  // Add Screenshots
+  // Add Screenshots from disk
   async function handleScreenshotsUploaded(e: React.ChangeEvent<HTMLInputElement>) {
     if (!activeProject || !e.target.files) return;
     const files = Array.from(e.target.files);
@@ -211,61 +267,6 @@ export default function App() {
     } finally {
       setIsLoading(false);
       if (screenshotInputRef.current) screenshotInputRef.current.value = '';
-    }
-  }
-
-  // Live Screen Capture via navigator.mediaDevices.getDisplayMedia
-  async function handleCaptureScreenFrame() {
-    if (!activeProject) return;
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { displaySurface: 'window' },
-      });
-      const video = document.createElement('video');
-      video.srcObject = stream;
-      await video.play();
-
-      // Grab frame after brief delay to let layout settle
-      await new Promise((r) => setTimeout(r, 600));
-
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth || 1920;
-      canvas.height = video.videoHeight || 1080;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      }
-
-      // Stop stream tracks
-      stream.getTracks().forEach((track) => track.stop());
-
-      const blob = await new Promise<Blob>((resolve) =>
-        canvas.toBlob((b) => resolve(b || new Blob()), 'image/png')
-      );
-
-      const filename = `screen_${Date.now()}.png`;
-      const asset = await addScreenshot(activeProject.id, blob, filename);
-      const updatedList = await getScreenshotsForProject(activeProject.id);
-      setScreenshots(updatedList);
-
-      // Auto-create a step on this screenshot if none exists
-      const newStep: GuideStep = {
-        id: generateId(),
-        screenshotId: asset.id,
-        act: 'click',
-        box: { x: 40, y: 40, w: 20, h: 10 },
-        en: 'Click here to continue.',
-        ru: 'Нажмите здесь для продолжения.',
-      };
-      const updatedSteps = [...activeProject.steps, newStep];
-      await updateProject(activeProject.id, { steps: updatedSteps });
-      setActiveProject({ ...activeProject, steps: updatedSteps });
-      setSelectedStepIndex(updatedSteps.length - 1);
-      setActiveTab('editor');
-
-      showStatus('Кадр экрана успешно захвачен!');
-    } catch (err) {
-      console.warn('Screen capture cancelled or not allowed', err);
     }
   }
 
@@ -411,26 +412,43 @@ export default function App() {
       <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 py-3.5 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-teal-600 text-white flex items-center justify-center font-bold text-lg shadow">
-            N
+            G
           </div>
           <div>
             <h1 className="text-base font-bold tracking-tight text-slate-800 dark:text-slate-100">
               Guide Creation Tool
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Интерактивные пошаговые инструкции и тренажёры
+              Универсальный конструктор интерактивных руководств и тренажёров
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
           {activeProject && (
-            <button
-              onClick={() => setActiveProjectId(null)}
-              className="text-xs font-medium px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-1.5 transition"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" /> Все гайды
-            </button>
+            <>
+              {/* Prominent Privacy & AI Assistant button in header */}
+              <button
+                onClick={() => setIsAiModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-xl font-semibold text-xs flex items-center gap-2 bg-gradient-to-r from-teal-600 to-indigo-600 hover:from-teal-500 hover:to-indigo-500 text-white shadow-sm transition"
+                title="Настройка глобального размытия и ИИ-генерация текстов"
+              >
+                <Shield className="w-3.5 h-3.5 text-teal-200" />
+                <span>🛡️ Приватность и ✨ ИИ-помощник</span>
+                {activeProject.globalBlurBoxes && activeProject.globalBlurBoxes.length > 0 && (
+                  <span className="bg-white/25 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold ml-0.5">
+                    {activeProject.globalBlurBoxes.length}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setActiveProjectId(null)}
+                className="text-xs font-medium px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-1.5 transition"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" /> Все гайды
+              </button>
+            </>
           )}
 
           <button
@@ -453,8 +471,8 @@ export default function App() {
                 <h2 className="text-2xl font-bold mb-2">Создание интерактивных гайдов</h2>
                 <p className="text-teal-100 max-w-2xl text-sm leading-relaxed">
                   Создавайте кликабельные интерактивные руководства и тренажёры из серии
-                  скриншотов. Экспортируйте в полностью автономный одиночный HTML-файл с поддержкой
-                  переключения RU/EN, размытия конфиденциальных данных и режима тренажёра.
+                  скриншотов и живого экрана. Экспортируйте в полностью автономный одиночный HTML-файл с поддержкой
+                  переключения RU/EN, сквозного размытия конфиденциальных данных и режима тренажёра.
                 </p>
               </div>
 
@@ -581,7 +599,7 @@ export default function App() {
               </div>
 
               {/* Tabs */}
-              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl">
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl shrink-0">
                 <button
                   onClick={() => setActiveTab('capture')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
@@ -615,194 +633,160 @@ export default function App() {
               </div>
             </div>
 
-            {/* Tab 1: Capture / Screenshots */}
+            {/* Tab 1: Live Capture Workspace */}
             {activeTab === 'capture' && (
-              <div className="space-y-6">
-                <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-6 shadow-sm">
-                  <h3 className="font-bold text-base mb-1">Добавление кадров и скриншотов</h3>
-                  <p className="text-xs text-slate-500 mb-5">
-                    Вы можете захватить окно экрана прямо сейчас или загрузить готовые изображения
-                    (.png, .jpg).
-                  </p>
-
-                  <div className="flex flex-wrap gap-4">
-                    <button
-                      onClick={handleCaptureScreenFrame}
-                      className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2.5 rounded-xl font-medium text-sm flex items-center gap-2 shadow transition"
-                    >
-                      <Monitor className="w-4 h-4" /> Захватить кадр с экрана
-                    </button>
-
-                    <button
-                      onClick={() => screenshotInputRef.current?.click()}
-                      className="bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 px-4 py-2.5 rounded-xl font-medium text-sm flex items-center gap-2 transition"
-                    >
-                      <ImageIcon className="w-4 h-4" /> Загрузить картинки с диска
-                    </button>
-                  </div>
-                </div>
-
-                {/* Gallery */}
-                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {screenshots.map((shot) => {
-                    const stepsOnThis = activeProject.steps.filter((s) => s.screenshotId === shot.id);
-                    const shotUrl = URL.createObjectURL(shot.blob);
-                    return (
-                      <div
-                        key={shot.id}
-                        className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm flex flex-col justify-between"
-                      >
-                        <div className="relative aspect-video bg-slate-100 dark:bg-slate-900 overflow-hidden">
-                          <img
-                            src={shotUrl}
-                            alt={shot.filename}
-                            className="w-full h-full object-cover"
-                          />
-                          <div className="absolute top-2 right-2 bg-slate-900/80 text-white text-[10px] px-2 py-0.5 rounded font-mono">
-                            {shot.width}x{shot.height}
-                          </div>
-                        </div>
-
-                        <div className="p-3">
-                          <p className="font-semibold text-xs truncate mb-1" title={shot.filename}>
-                            {shot.filename}
-                          </p>
-                          <div className="flex items-center justify-between text-[11px] text-slate-500">
-                            <span>Шагов: {stepsOnThis.length}</span>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => handleAddStep(shot.id)}
-                                className="text-teal-600 hover:underline font-medium"
-                              >
-                                + Шаг
-                              </button>
-                              <button
-                                onClick={async () => {
-                                  if (!confirm(`Удалить скриншот ${shot.filename}?`)) return;
-                                  await deleteScreenshot(shot.id);
-                                  const updated = await getScreenshotsForProject(activeProject.id);
-                                  setScreenshots(updated);
-                                }}
-                                className="text-red-500 hover:text-red-700"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              <LiveCaptureWorkspace
+                project={activeProject}
+                screenshots={screenshots}
+                onProjectUpdated={reloadActiveProject}
+                onOpenEditorStep={(stepId) => {
+                  const idx = activeProject.steps.findIndex((s) => s.id === stepId);
+                  if (idx !== -1) {
+                    setSelectedStepIndex(idx);
+                  }
+                  setActiveTab('editor');
+                }}
+              />
             )}
 
             {/* Tab 2: Visual Step Editor */}
             {activeTab === 'editor' && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1">
-                {/* Left: Step list */}
-                <div className="lg:col-span-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4 flex flex-col h-[750px]">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">
-                      Шаги ({activeProject.steps.length})
-                    </h3>
-                    <button
-                      onClick={() => handleAddStep()}
-                      className="bg-teal-600 hover:bg-teal-700 text-white px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Добавить
-                    </button>
+              <div className="space-y-4">
+                {/* Secondary toolbar for Editor Tab */}
+                <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 shadow-sm">
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <span className="font-semibold text-slate-700 dark:text-slate-200">
+                      Редактирование шагов:
+                    </span>
+                    <span>{activeProject.steps.length} шагов, {screenshots.length} кадров</span>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-                    {activeProject.steps.length === 0 ? (
-                      <div className="text-center py-12 text-slate-400 text-xs">
-                        Нет шагов. Нажмите «+ Добавить», чтобы создать первый шаг.
-                      </div>
-                    ) : (
-                      activeProject.steps.map((st, idx) => {
-                        const isSelected = idx === selectedStepIndex;
-                        return (
-                          <div
-                            key={st.id}
-                            onClick={() => setSelectedStepIndex(idx)}
-                            className={`p-3 rounded-xl border text-xs cursor-pointer transition flex items-start justify-between gap-2 ${
-                              isSelected
-                                ? 'bg-teal-50 dark:bg-teal-950/40 border-teal-500 text-slate-900 dark:text-slate-100 shadow-sm'
-                                : 'bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                            }`}
-                          >
-                            <div className="flex items-start gap-2.5 min-w-0">
-                              <span
-                                className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
-                                  isSelected
-                                    ? 'bg-teal-600 text-white'
-                                    : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
-                                }`}
-                              >
-                                {idx + 1}
-                              </span>
-                              <div className="min-w-0">
-                                {st.chapterTitle && (
-                                  <span className="text-[10px] font-semibold text-teal-600 dark:text-teal-400 block truncate">
-                                    {st.chapterTitle}
-                                  </span>
-                                )}
-                                <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 mb-1">
-                                  {st.act}
-                                </span>
-                                <p className="truncate text-slate-700 dark:text-slate-300">
-                                  {st.ru || st.en || '(без текста)'}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button
-                                onClick={(e) => handleMoveStep(idx, 'up', e)}
-                                disabled={idx === 0}
-                                className="p-1 hover:text-teal-600 disabled:opacity-20"
-                                title="Переместить вверх"
-                              >
-                                <ChevronUp className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={(e) => handleMoveStep(idx, 'down', e)}
-                                disabled={idx === activeProject.steps.length - 1}
-                                className="p-1 hover:text-teal-600 disabled:opacity-20"
-                                title="Переместить вниз"
-                              >
-                                <ChevronDown className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={(e) => handleDeleteStep(idx, e)}
-                                className="p-1 hover:text-red-500"
-                                title="Удалить шаг"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setIsAiModalOpen(true)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-gradient-to-r from-teal-600 to-indigo-600 hover:from-teal-500 hover:to-indigo-500 text-white shadow-sm transition"
+                    >
+                      <Shield className="w-3.5 h-3.5 text-teal-200" />
+                      <span>🛡️ Приватность и ✨ ИИ-помощник</span>
+                      {activeProject.globalBlurBoxes && activeProject.globalBlurBoxes.length > 0 && (
+                        <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold ml-0.5">
+                          {activeProject.globalBlurBoxes.length}
+                        </span>
+                      )}
+                    </button>
                   </div>
                 </div>
 
-                {/* Right: Step details and Interactive Stage */}
-                <div className="lg:col-span-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 flex flex-col space-y-4">
-                  {activeProject.steps[selectedStepIndex] ? (
-                    <StepEditorPanel
-                      step={activeProject.steps[selectedStepIndex]}
-                      stepIndex={selectedStepIndex}
-                      screenshots={screenshots}
-                      onUpdate={handleUpdateCurrentStep}
-                    />
-                  ) : (
-                    <div className="text-center py-20 text-slate-400">
-                      Выберите или создайте шаг для редактирования
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1">
+                  {/* Left: Step list */}
+                  <div className="lg:col-span-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4 flex flex-col h-[780px]">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">
+                        Шаги ({activeProject.steps.length})
+                      </h3>
+                      <button
+                        onClick={() => handleAddStep()}
+                        className="bg-teal-600 hover:bg-teal-700 text-white px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Добавить
+                      </button>
                     </div>
-                  )}
+
+                    <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                      {activeProject.steps.length === 0 ? (
+                        <div className="text-center py-12 text-slate-400 text-xs">
+                          Нет шагов. Перейдите во вкладку «1. Запись» для захвата экрана или нажмите «+ Добавить».
+                        </div>
+                      ) : (
+                        activeProject.steps.map((st, idx) => {
+                          const isSelected = idx === selectedStepIndex;
+                          return (
+                            <div
+                              key={st.id}
+                              onClick={() => setSelectedStepIndex(idx)}
+                              className={`p-3 rounded-xl border text-xs cursor-pointer transition flex items-start justify-between gap-2 ${
+                                isSelected
+                                  ? 'bg-teal-50 dark:bg-teal-950/40 border-teal-500 text-slate-900 dark:text-slate-100 shadow-sm'
+                                  : 'bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                              }`}
+                            >
+                              <div className="flex items-start gap-2.5 min-w-0">
+                                <span
+                                  className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
+                                    isSelected
+                                      ? 'bg-teal-600 text-white'
+                                      : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                                  }`}
+                                >
+                                  {idx + 1}
+                                </span>
+                                <div className="min-w-0">
+                                  {st.chapterTitle && (
+                                    <span className="text-[10px] font-semibold text-teal-600 dark:text-teal-400 block truncate">
+                                      {st.chapterTitle}
+                                    </span>
+                                  )}
+                                  <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 mb-1">
+                                    {st.act}
+                                  </span>
+                                  <p className="truncate text-slate-700 dark:text-slate-300">
+                                    {st.ru || st.en || '(без текста)'}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  onClick={(e) => handleMoveStep(idx, 'up', e)}
+                                  disabled={idx === 0}
+                                  className="p-1 hover:text-teal-600 disabled:opacity-20"
+                                  title="Переместить вверх"
+                                >
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={(e) => handleMoveStep(idx, 'down', e)}
+                                  disabled={idx === activeProject.steps.length - 1}
+                                  className="p-1 hover:text-teal-600 disabled:opacity-20"
+                                  title="Переместить вниз"
+                                >
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={(e) => handleDeleteStep(idx, e)}
+                                  className="p-1 hover:text-red-500"
+                                  title="Удалить шаг"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right: Step details and Interactive Stage */}
+                  <div className="lg:col-span-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 flex flex-col space-y-4">
+                    {activeProject.steps[selectedStepIndex] ? (
+                      <StepEditorPanel
+                        project={activeProject}
+                        step={activeProject.steps[selectedStepIndex]}
+                        stepIndex={selectedStepIndex}
+                        screenshots={screenshots}
+                        onUpdateStep={handleUpdateCurrentStep}
+                        onUpdateProject={handleUpdateProject}
+                        onUpdateScreenshot={handleUpdateScreenshot}
+                        onOpenAiModal={() => setIsAiModalOpen(true)}
+                        showStatus={showStatus}
+                      />
+                    ) : (
+                      <div className="text-center py-20 text-slate-400">
+                        Выберите или создайте шаг для редактирования
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -890,29 +874,64 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Ai and Privacy Modal */}
+      {activeProject && (
+        <AiAndPrivacyModal
+          isOpen={isAiModalOpen}
+          onClose={() => setIsAiModalOpen(false)}
+          project={activeProject}
+          screenshots={screenshots}
+          activeStep={activeProject.steps[selectedStepIndex]}
+          onUpdateProject={handleUpdateProject}
+        />
+      )}
     </div>
   );
 }
 
 /**
- * Step Editor Panel with Canvas box positioning & text fields.
+ * Enhanced Step Editor Panel with Canvas box positioning, privacy tools, voice dictation, and AI micro-crop.
  */
 function StepEditorPanel({
+  project,
   step,
   stepIndex,
   screenshots,
-  onUpdate,
+  onUpdateStep,
+  onUpdateProject,
+  onUpdateScreenshot,
+  onOpenAiModal,
+  showStatus,
 }: {
+  project: GuideProject;
   step: GuideStep;
   stepIndex: number;
   screenshots: ScreenshotAsset[];
-  onUpdate: (updates: Partial<GuideStep>) => void;
+  onUpdateStep: (updates: Partial<GuideStep>) => void;
+  onUpdateProject: (updates: Partial<GuideProject>) => Promise<void>;
+  onUpdateScreenshot: (screenshotId: string, updates: Partial<ScreenshotAsset>) => Promise<void>;
+  onOpenAiModal: () => void;
+  showStatus: (msg: string) => void;
 }) {
   const currentAsset = screenshots.find((s) => s.id === step.screenshotId) || screenshots[0];
   const [imageUrl, setImageUrl] = useState<string>('');
   const imgContainerRef = useRef<HTMLDivElement>(null);
+
+  // Active mouse drawing tool
+  const [drawTool, setDrawTool] = useState<EditorDrawTool>('target');
   const [isDrawing, setIsDrawing] = useState<boolean>(false);
   const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
+  const [currentBox, setCurrentBox] = useState<BoxRect | null>(null);
+
+  // Voice Dictation
+  const [isDictating, setIsDictating] = useState<boolean>(false);
+  const [dictationLang, setDictationLang] = useState<'ru-RU' | 'en-US'>('ru-RU');
+  const [liveTranscript, setLiveTranscript] = useState<string>('');
+  const voiceControllerRef = useRef<VoiceDictationController | null>(null);
+
+  // AI Micro-crop status
+  const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
 
   useEffect(() => {
     if (currentAsset?.blob) {
@@ -922,14 +941,112 @@ function StepEditorPanel({
     }
   }, [currentAsset]);
 
-  // Handle click-drag on image to set step.box coordinates
+  // Voice Controller cleanup
+  useEffect(() => {
+    return () => {
+      voiceControllerRef.current?.destroy();
+      voiceControllerRef.current = null;
+    };
+  }, []);
+
+  // Voice Dictation toggle
+  const handleToggleVoice = () => {
+    if (!isSpeechRecognitionSupported()) {
+      showStatus('Web Speech API не поддерживается текущим браузером (рекомендуется Chrome или Edge)');
+      return;
+    }
+
+    if (!voiceControllerRef.current) {
+      const controller = new VoiceDictationController(dictationLang);
+      controller.onTranscript = (transcript) => {
+        setLiveTranscript(transcript);
+      };
+      controller.onParsedStep = (parsed: ParsedVoiceStep) => {
+        onUpdateStep({
+          act: parsed.act,
+          ru: parsed.ru,
+          en: parsed.en,
+          voiceDraft: parsed.rawTranscript,
+        });
+        showStatus(`Голос распознан: ${parsed.ru}`);
+      };
+      controller.onStateChange = (listening) => {
+        setIsDictating(listening);
+        if (!listening) {
+          setLiveTranscript('');
+        }
+      };
+      controller.onError = (err) => {
+        console.warn('Voice error:', err);
+        setIsDictating(false);
+        showStatus('Ошибка микрофона или распознавания речи');
+      };
+      voiceControllerRef.current = controller;
+    }
+
+    if (isDictating) {
+      voiceControllerRef.current.stop();
+    } else {
+      voiceControllerRef.current.setLanguage(dictationLang);
+      voiceControllerRef.current.start();
+      showStatus(`Слушаю (${dictationLang === 'ru-RU' ? 'RU' : 'EN'})... Говорите команду (например: "Нажмите Создать")`);
+    }
+  };
+
+  const handleToggleVoiceLang = () => {
+    const nextLang = dictationLang === 'ru-RU' ? 'en-US' : 'ru-RU';
+    setDictationLang(nextLang);
+    if (voiceControllerRef.current) {
+      voiceControllerRef.current.setLanguage(nextLang);
+    }
+  };
+
+  // AI Micro-crop call
+  const handleAiDescribe = async () => {
+    const { apiKey, model } = getGeminiSettings();
+    if (!apiKey || !apiKey.trim()) {
+      onOpenAiModal();
+      showStatus('Укажите ключ Gemini API в настройках ИИ');
+      return;
+    }
+
+    if (!currentAsset?.blob) {
+      showStatus('Для этого шага не найдено изображение кадра');
+      return;
+    }
+
+    setIsAiLoading(true);
+    try {
+      const result = await describeStepWithGeminiMicroCrop({
+        apiKey,
+        model,
+        screenshotBlob: currentAsset.blob,
+        step,
+      });
+
+      onUpdateStep({
+        ru: result.ru,
+        en: result.en,
+        voiceDraft: result.buttonLabel ? `Элемент: ${result.buttonLabel}` : step.voiceDraft,
+      });
+      showStatus('✨ Описание успешно сгенерировано по микро-кропу!');
+    } catch (err: unknown) {
+      console.error(err);
+      showStatus(`Ошибка ИИ: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  // Mouse drag handlers on image canvas
   function handleMouseDown(e: React.MouseEvent<HTMLDivElement>) {
-    if (!imgContainerRef.current) return;
+    if (e.button !== 0 || !imgContainerRef.current) return;
     const rect = imgContainerRef.current.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
     setIsDrawing(true);
     setStartPoint({ x, y });
+    setCurrentBox({ x, y, w: 0, h: 0 });
   }
 
   function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
@@ -938,35 +1055,158 @@ function StepEditorPanel({
     const curX = ((e.clientX - rect.left) / rect.width) * 100;
     const curY = ((e.clientY - rect.top) / rect.height) * 100;
 
-    const left = Math.min(startPoint.x, curX);
-    const top = Math.min(startPoint.y, curY);
-    const width = Math.abs(curX - startPoint.x);
-    const height = Math.abs(curY - startPoint.y);
+    const left = Math.max(0, Math.min(100, Math.min(startPoint.x, curX)));
+    const top = Math.max(0, Math.min(100, Math.min(startPoint.y, curY)));
+    const width = Math.max(0.5, Math.min(100 - left, Math.abs(curX - startPoint.x)));
+    const height = Math.max(0.5, Math.min(100 - top, Math.abs(curY - startPoint.y)));
 
-    onUpdate({
-      box: {
-        x: Math.max(0, Math.min(100, Number(left.toFixed(2)))),
-        y: Math.max(0, Math.min(100, Number(top.toFixed(2)))),
-        w: Math.max(1, Math.min(100, Number(width.toFixed(2)))),
-        h: Math.max(1, Math.min(100, Number(height.toFixed(2)))),
-      },
-    });
+    const newRect: BoxRect = {
+      x: Number(left.toFixed(2)),
+      y: Number(top.toFixed(2)),
+      w: Number(width.toFixed(2)),
+      h: Number(height.toFixed(2)),
+    };
+
+    setCurrentBox(newRect);
+
+    // If drawing target box, update live
+    if (drawTool === 'target') {
+      onUpdateStep({ box: newRect });
+    }
   }
 
-  function handleMouseUp() {
+  async function handleMouseUp() {
+    if (!isDrawing || !currentBox) {
+      setIsDrawing(false);
+      setStartPoint(null);
+      setCurrentBox(null);
+      return;
+    }
+
+    const finalBox = { ...currentBox };
     setIsDrawing(false);
     setStartPoint(null);
+    setCurrentBox(null);
+
+    // Ignore tiny accidental clicks
+    if (finalBox.w < 1 || finalBox.h < 1) return;
+
+    if (drawTool === 'target') {
+      onUpdateStep({ box: finalBox });
+      showStatus('Рамка шага обновлена');
+    } else if (drawTool === 'step_blur') {
+      if (currentAsset) {
+        const nextBlur = [...(currentAsset.blurBoxes || []), finalBox];
+        await onUpdateScreenshot(currentAsset.id, { blurBoxes: nextBlur });
+        showStatus('🌫 Добавлено локальное размытие на этом кадре');
+      }
+    } else if (drawTool === 'global_blur') {
+      const nextGlobal = [...(project.globalBlurBoxes || []), finalBox];
+      await onUpdateProject({ globalBlurBoxes: nextGlobal });
+      showStatus('📌 Добавлено сквозное размытие на все кадры');
+    } else if (drawTool === 'mask') {
+      if (currentAsset) {
+        const nextMasks = [...(currentAsset.maskBoxes || []), finalBox];
+        await onUpdateScreenshot(currentAsset.id, { maskBoxes: nextMasks });
+        showStatus('🎨 Добавлена маска-плашка на этом кадре');
+      }
+    }
   }
+
+  // Delete handlers for privacy boxes
+  const handleDeleteStepBlur = async (idx: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!currentAsset) return;
+    const nextBlur = (currentAsset.blurBoxes || []).filter((_, i) => i !== idx);
+    await onUpdateScreenshot(currentAsset.id, { blurBoxes: nextBlur });
+    showStatus('Локальное размытие удалено');
+  };
+
+  const handleDeleteGlobalBlur = async (idx: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const nextGlobal = (project.globalBlurBoxes || []).filter((_, i) => i !== idx);
+    await onUpdateProject({ globalBlurBoxes: nextGlobal });
+    showStatus('Сквозное размытие удалено');
+  };
+
+  const handleDeleteMask = async (idx: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!currentAsset) return;
+    const nextMasks = (currentAsset.maskBoxes || []).filter((_, i) => i !== idx);
+    await onUpdateScreenshot(currentAsset.id, { maskBoxes: nextMasks });
+    showStatus('Маска удалена');
+  };
 
   return (
     <div className="space-y-4">
+      {/* Top Action Ribbon: Voice Dictation + AI Micro-Crop + Privacy Modal Trigger */}
+      <div className="bg-slate-50 dark:bg-slate-900/70 p-3 rounded-xl border border-slate-200 dark:border-slate-700/80 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Voice Dictation Button */}
+          <div className="inline-flex rounded-lg shadow-xs overflow-hidden border border-slate-300 dark:border-slate-700">
+            <button
+              onClick={handleToggleVoice}
+              className={`px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 transition ${
+                isDictating
+                  ? 'bg-red-600 text-white animate-pulse'
+                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+              title="Нажмите, чтобы продиктовать голосом действие и название кнопки"
+            >
+              {isDictating ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5 text-slate-400" />}
+              <span>{isDictating ? '🔴 Идёт запись...' : '🎤 Диктовать голосом'}</span>
+            </button>
+            <button
+              onClick={handleToggleVoiceLang}
+              className="px-2 py-1.5 text-[11px] font-bold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600 border-l border-slate-200 dark:border-slate-600 transition"
+              title="Переключить язык распознавания (RU / EN)"
+            >
+              {dictationLang === 'ru-RU' ? 'RU' : 'EN'}
+            </button>
+          </div>
+
+          {/* AI Micro-Crop Button */}
+          <button
+            onClick={handleAiDescribe}
+            disabled={isAiLoading}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-gradient-to-r from-teal-600 to-indigo-600 hover:from-teal-500 hover:to-indigo-500 text-white shadow-xs transition disabled:opacity-50"
+            title="Автоматически определить надпись на кнопке в рамке и сгенерировать описания RU/EN"
+          >
+            {isAiLoading ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Wand2 className="w-3.5 h-3.5" />
+            )}
+            <span>{isAiLoading ? 'ИИ думает...' : '✨ Авто-описание по микро-кропу'}</span>
+          </button>
+        </div>
+
+        {/* Global Privacy Modal shortcut */}
+        <button
+          onClick={onOpenAiModal}
+          className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-medium"
+        >
+          <Shield className="w-3.5 h-3.5" />
+          <span>Сквозные пресеты и пакетный ИИ →</span>
+        </button>
+      </div>
+
+      {/* Live Voice Dictation Transcript Pill */}
+      {isDictating && liveTranscript && (
+        <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 p-2.5 rounded-lg text-xs text-red-700 dark:text-red-300 flex items-center gap-2 animate-fadeIn">
+          <span className="w-2 h-2 rounded-full bg-red-600 animate-ping shrink-0" />
+          <span className="font-semibold shrink-0">Распознаётся:</span>
+          <span className="italic truncate">{liveTranscript}</span>
+        </div>
+      )}
+
       {/* Step Metadata Inputs */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <div>
           <label className="block text-[11px] font-semibold text-slate-500 mb-1">Действие (Act)</label>
           <select
             value={step.act}
-            onChange={(e) => onUpdate({ act: e.target.value as ActionType })}
+            onChange={(e) => onUpdateStep({ act: e.target.value as ActionType })}
             className="w-full text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-semibold"
           >
             <option value="click">click (Нажать)</option>
@@ -982,7 +1222,7 @@ function StepEditorPanel({
           <label className="block text-[11px] font-semibold text-slate-500 mb-1">Скриншот</label>
           <select
             value={step.screenshotId}
-            onChange={(e) => onUpdate({ screenshotId: e.target.value })}
+            onChange={(e) => onUpdateStep({ screenshotId: e.target.value })}
             className="w-full text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 truncate"
           >
             {screenshots.map((s) => (
@@ -1000,10 +1240,77 @@ function StepEditorPanel({
           <input
             type="text"
             value={step.chapterTitle || ''}
-            onChange={(e) => onUpdate({ chapterTitle: e.target.value })}
+            onChange={(e) => onUpdateStep({ chapterTitle: e.target.value })}
             placeholder="например: 1. Подключение источника"
             className="w-full text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
           />
+        </div>
+      </div>
+
+      {/* Canvas Tool Switcher Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200 dark:border-slate-700/60">
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="font-semibold text-slate-600 dark:text-slate-400 mr-1 text-[11px]">
+            Инструмент мыши на холсте:
+          </span>
+
+          <button
+            type="button"
+            onClick={() => setDrawTool('target')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
+              drawTool === 'target'
+                ? 'bg-red-600 text-white shadow-xs'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-red-400" />
+            <span>🔴 Рамка шага (Target Box)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDrawTool('step_blur')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
+              drawTool === 'step_blur'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            <span>🌫 Блюр на этом кадре (Step Blur)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDrawTool('global_blur')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
+              drawTool === 'global_blur'
+                ? 'bg-purple-600 text-white shadow-xs'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-purple-400" />
+            <span>📌 Сквозной блюр на все кадры</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDrawTool('mask')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
+              drawTool === 'mask'
+                ? 'bg-slate-800 text-white border border-slate-600 shadow-xs'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+          >
+            <Square className="w-3 h-3 text-slate-400" />
+            <span>🎨 Маска-ластик (Mask)</span>
+          </button>
+        </div>
+
+        <div className="text-[11px] text-slate-400 flex items-center gap-2">
+          <span>Сквозных: {project.globalBlurBoxes?.length || 0}</span>
+          <span>•</span>
+          <span>Кадр: {(currentAsset?.blurBoxes?.length || 0) + (currentAsset?.maskBoxes?.length || 0)}</span>
         </div>
       </div>
 
@@ -1019,9 +1326,9 @@ function StepEditorPanel({
           >
             <img src={imageUrl} alt="" className="w-full h-auto block pointer-events-none" />
 
-            {/* Step Highlight Box */}
+            {/* Step Highlight Target Box */}
             <div
-              className="absolute border-2 border-red-500 rounded bg-red-500/20 pointer-events-none shadow-sm"
+              className="absolute border-2 border-red-500 rounded bg-red-500/20 pointer-events-none shadow-sm transition-all"
               style={{
                 left: `${step.box.x}%`,
                 top: `${step.box.y}%`,
@@ -1029,16 +1336,16 @@ function StepEditorPanel({
                 height: `${step.box.h}%`,
               }}
             >
-              <span className="absolute -top-5 left-0 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow">
+              <span className="absolute -top-5 left-0 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap">
                 {stepIndex + 1}. {step.act}
               </span>
             </div>
 
-            {/* Display blur boxes on this image */}
-            {currentAsset?.blurBoxes?.map((b, i) => (
+            {/* Display Global Blur Boxes (applied to all frames) */}
+            {project.globalBlurBoxes?.map((b, i) => (
               <div
-                key={i}
-                className="absolute border border-amber-400 bg-amber-400/20 backdrop-blur-sm pointer-events-none"
+                key={`global_${i}`}
+                className="absolute border border-purple-400 bg-purple-500/25 backdrop-blur-sm group select-none"
                 style={{
                   left: `${b.x}%`,
                   top: `${b.y}%`,
@@ -1046,18 +1353,106 @@ function StepEditorPanel({
                   height: `${b.h}%`,
                 }}
               >
-                <span className="text-[9px] bg-amber-500 text-black px-1 rounded absolute top-0 left-0">
-                  blur
+                <span className="text-[9px] bg-purple-600 text-white font-semibold px-1 rounded absolute top-0 left-0">
+                  📌 сквозной
                 </span>
+                <button
+                  type="button"
+                  onClick={(e) => handleDeleteGlobalBlur(i, e)}
+                  className="absolute top-0 right-0 bg-red-600 text-white rounded-full p-0.5 hover:bg-red-700 opacity-80 hover:opacity-100 transition shadow"
+                  title="Удалить этот сквозной блюр"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
               </div>
             ))}
+
+            {/* Display Screenshot-specific Blur Boxes */}
+            {currentAsset?.blurBoxes?.map((b, i) => (
+              <div
+                key={`step_blur_${i}`}
+                className="absolute border border-amber-400 bg-amber-400/25 backdrop-blur-sm group select-none"
+                style={{
+                  left: `${b.x}%`,
+                  top: `${b.y}%`,
+                  width: `${b.w}%`,
+                  height: `${b.h}%`,
+                }}
+              >
+                <span className="text-[9px] bg-amber-500 text-black font-semibold px-1 rounded absolute top-0 left-0">
+                  🌫 кадр
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => handleDeleteStepBlur(i, e)}
+                  className="absolute top-0 right-0 bg-red-600 text-white rounded-full p-0.5 hover:bg-red-700 opacity-80 hover:opacity-100 transition shadow"
+                  title="Удалить это локальное размытие"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </div>
+            ))}
+
+            {/* Display Screenshot-specific Mask Boxes */}
+            {currentAsset?.maskBoxes?.map((b, i) => (
+              <div
+                key={`mask_${i}`}
+                className="absolute border border-slate-500 bg-slate-900 group select-none"
+                style={{
+                  left: `${b.x}%`,
+                  top: `${b.y}%`,
+                  width: `${b.w}%`,
+                  height: `${b.h}%`,
+                }}
+              >
+                <span className="text-[9px] bg-slate-700 text-white px-1 rounded absolute top-0 left-0">
+                  🎨 маска
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => handleDeleteMask(i, e)}
+                  className="absolute top-0 right-0 bg-red-600 text-white rounded-full p-0.5 hover:bg-red-700 opacity-80 hover:opacity-100 transition shadow"
+                  title="Удалить эту маску"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </div>
+            ))}
+
+            {/* In-progress drawing preview box */}
+            {isDrawing && currentBox && drawTool !== 'target' && (
+              <div
+                className={`absolute pointer-events-none border-2 border-dashed ${
+                  drawTool === 'step_blur'
+                    ? 'border-amber-400 bg-amber-400/20 backdrop-blur-sm'
+                    : drawTool === 'global_blur'
+                    ? 'border-purple-400 bg-purple-500/20 backdrop-blur-sm'
+                    : 'border-slate-300 bg-slate-900/80'
+                }`}
+                style={{
+                  left: `${currentBox.x}%`,
+                  top: `${currentBox.y}%`,
+                  width: `${currentBox.w}%`,
+                  height: `${currentBox.h}%`,
+                }}
+              />
+            )}
           </div>
         ) : (
           <div className="py-24 text-slate-500 text-xs">Нет привязанного изображения</div>
         )}
       </div>
+
       <p className="text-[11px] text-slate-400 text-center">
-        💡 Зажмите и потяните мышь по скриншоту выше, чтобы задать точную рамку для этого шага.
+        💡 Зажмите и потяните мышь по скриншоту выше, чтобы применить выбранный инструмент (
+        {drawTool === 'target'
+          ? '🔴 Рамка шага'
+          : drawTool === 'step_blur'
+          ? '🌫 Локальный блюр'
+          : drawTool === 'global_blur'
+          ? '📌 Сквозной блюр'
+          : '🎨 Маска-плашка'}
+        ).
       </p>
 
       {/* Russian and English texts */}
@@ -1069,8 +1464,8 @@ function StepEditorPanel({
           <textarea
             rows={3}
             value={step.ru}
-            onChange={(e) => onUpdate({ ru: e.target.value })}
-            placeholder="Откройте свой workspace и нажмите + New item..."
+            onChange={(e) => onUpdateStep({ ru: e.target.value })}
+            placeholder="Нажмите <b>+ Создать</b> для добавления элемента..."
             className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
           />
         </div>
@@ -1082,27 +1477,29 @@ function StepEditorPanel({
           <textarea
             rows={3}
             value={step.en}
-            onChange={(e) => onUpdate({ en: e.target.value })}
-            placeholder="Open your workspace and click + New item..."
+            onChange={(e) => onUpdateStep({ en: e.target.value })}
+            placeholder="Click <b>+ New</b> to add a new item..."
             className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
           />
         </div>
       </div>
 
       {/* Additional options */}
-      <div className="flex items-center gap-6 pt-1 text-xs">
-        <label className="flex items-center gap-2 cursor-pointer">
+      <div className="flex flex-wrap items-center justify-between gap-4 pt-1 text-xs">
+        <label className="flex items-center gap-2 cursor-pointer select-none">
           <input
             type="checkbox"
             checked={!!step.keepBlur}
-            onChange={(e) => onUpdate({ keepBlur: e.target.checked })}
+            onChange={(e) => onUpdateStep({ keepBlur: e.target.checked })}
             className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
           />
-          <span>Не вырезать из блюра (keepBlur)</span>
+          <span className="text-slate-700 dark:text-slate-300">
+            Не вырезать из блюра (keepBlur — оставить размытие поверх этой зоны)
+          </span>
         </label>
 
-        <span className="text-slate-400">
-          Координаты: [{step.box.x}%, {step.box.y}%, {step.box.w}%, {step.box.h}%]
+        <span className="text-slate-400 font-mono text-[11px]">
+          Рамка: [{step.box.x}%, {step.box.y}%, {step.box.w}%, {step.box.h}%]
         </span>
       </div>
     </div>

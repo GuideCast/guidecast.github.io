@@ -59,7 +59,7 @@ export interface GuideProject {
 }
 
 /**
- * Legacy formats (from fabric-guide-tool / build_guide.py / steps.json)
+ * Legacy formats (from guide-creation-tool / build_guide.py / steps.json)
  * where box is [x0, y0, x1, y1] in pixels relative to display_width (default: 2000).
  */
 export interface LegacyStep {

@@ -221,9 +221,9 @@ async function createDemoScreenshotBlob(title: string, subtitle: string, stepHig
 
   // Cards grid
   const cards = [
-    { name: 'Fabric Dataflow Gen2', desc: 'Transform, clean and prepare multi-source datasets' },
-    { name: 'Ingestion Pipeline', desc: 'Copy batch and streaming tables to Delta Lake' },
-    { name: 'Semantic Model', desc: 'Define relations, DAX metrics and row-level security' },
+    { name: 'Cloud Dataflow ETL', desc: 'Transform, clean and prepare multi-source datasets' },
+    { name: 'Ingestion Pipeline', desc: 'Copy batch and streaming tables to Data Lake' },
+    { name: 'Semantic Model', desc: 'Define relations, metrics and row-level security' },
   ];
 
   cards.forEach((card, idx) => {
@@ -335,12 +335,12 @@ export async function createDemoProject(): Promise<GuideProject> {
     {
       id: generateId(),
       screenshotId: asset2.id,
-      chapterTitle: 'Настройка активности Dataflow',
+      chapterTitle: 'Настройка трансформации данных',
       act: 'click',
       box: { x: 16.9, y: 37.5, w: 7.3, h: 3.5 }, // Button on Dataflow card
-      en: 'Next, click <b>Build now →</b> inside <b>Fabric Dataflow Gen2</b> to add data cleaning steps.',
-      ru: 'Затем нажмите <b>Build now →</b> в карточке <b>Fabric Dataflow Gen2</b> для добавления этапа очистки.',
-      voiceDraft: 'Нажмите на кнопку карточки Dataflow Gen2.',
+      en: 'Next, click <b>Build now →</b> inside <b>Cloud Dataflow ETL</b> to add data cleaning steps.',
+      ru: 'Затем нажмите <b>Build now →</b> в карточке <b>Cloud Dataflow ETL</b> для добавления этапа очистки.',
+      voiceDraft: 'Нажмите на кнопку карточки Cloud Dataflow ETL.',
     },
     {
       id: generateId(),
@@ -357,9 +357,9 @@ export async function createDemoProject(): Promise<GuideProject> {
 
   const project: GuideProject = {
     id: projectId,
-    pageTitle: 'Fabric Pipeline Quickstart',
-    titleEn: 'How to build an Ingestion Pipeline in Microsoft Fabric',
-    titleRu: 'Как создать пайплайн загрузки данных в Microsoft Fabric',
+    pageTitle: 'Analytics Pipeline Quickstart',
+    titleEn: 'How to Build a Data Ingestion Pipeline',
+    titleRu: 'Как создать пайплайн загрузки данных в аналитической системе',
     subEn: 'Step-by-step interactive walk-through with training mode.',
     subRu: 'Пошаговый интерактивный тренажёр и руководство.',
     defaultLang: 'ru',
