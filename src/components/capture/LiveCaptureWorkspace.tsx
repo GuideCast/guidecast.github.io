@@ -32,6 +32,10 @@ import {
 import type { BoxRect, GuideProject, GuideStep, ScreenshotAsset, ActionType } from '../../types/guide';
 import { addScreenshot, updateProject, updateScreenshot, generateId } from '../../db/database';
 import {
+  InteractiveBoxEditor,
+  computeDefaultCursorPos,
+} from '../common/InteractiveBoxEditor';
+import {
   VoiceDictationController,
   isSpeechRecognitionSupported,
   ACTION_PRESETS,
@@ -102,14 +106,14 @@ const translations = {
     snapAndHighlight: '📸 Snap & Highlight Button',
     backToLive: '▶️ Back to Live Stream for Next Step',
     stepCapturedTitle: '✅ Step #{n} Captured!',
+    boxEditorHint: '💡 Drag box to move, pull corners/edges to resize, or drag the ↖ pointer so it doesn\'t cover text.',
     refineBoxHint: '✂️ Drag on image to redraw/refine button highlight box',
     livePreviewHint: '✂️ Drag mouse across any button to Snap & Highlight',
 
     // Remote PiP controls
     targetPlaceholder: 'Button or element name (e.g. Save, Export, Submit)...',
     actionType: 'Action Type',
-    instructionRu: 'Instruction (RU)',
-    instructionEn: 'Instruction (EN)',
+    instruction: 'Instruction',
     stepDone: '✓ Done (Continue Capturing)',
     openInEditor: 'Open in Step Editor',
     deleteStep: 'Delete this step',
@@ -192,14 +196,14 @@ const translations = {
     snapAndHighlight: '📸 Снять кадр и выделить кнопку',
     backToLive: '▶️ Вернуться к эфиру для следующего шага',
     stepCapturedTitle: '✅ Шаг #{n} сохранён!',
+    boxEditorHint: '💡 Тяните рамку для сдвига, за края — для размера, или сдвиньте ↖ курсор, чтобы не закрывать буквы.',
     refineBoxHint: '✂️ Обведите кнопку заново для уточнения рамки',
     livePreviewHint: '✂️ Выделите область на превью для шага',
 
     // Remote PiP controls
     targetPlaceholder: 'Название кнопки или поля (например: Сохранить, Экспорт)...',
     actionType: 'Тип действия',
-    instructionRu: 'Инструкция (RU)',
-    instructionEn: 'Инструкция (EN)',
+    instruction: 'Инструкция',
     stepDone: '✓ Готово (Продолжить съёмку)',
     openInEditor: 'Редактор шага',
     deleteStep: 'Удалить этот шаг',
@@ -261,8 +265,6 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
   const pipVideoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pipContainerRef = useRef<HTMLDivElement | null>(null);
-  const mainImageRef = useRef<HTMLImageElement | null>(null);
-  const pipImageRef = useRef<HTMLImageElement | null>(null);
 
   // --- Document Picture-in-Picture State ---
   const [pipWindow, setPipWindow] = useState<Window | null>(null);
@@ -279,8 +281,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const [targetNameInput, setTargetNameInput] = useState('');
   const [activeActionType, setActiveActionType] = useState<ActionType>('click');
-  const [customRuText, setCustomRuText] = useState('');
-  const [customEnText, setCustomEnText] = useState('');
+  const [instructionText, setInstructionText] = useState('');
 
   // --- Voice Dictation State ---
   const [isVoiceActive, setIsVoiceActive] = useState(false);
@@ -329,9 +330,15 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
       if (parsed.targetName) {
         setTargetNameInput(parsed.targetName);
       }
-      setCustomRuText(parsed.ru);
-      setCustomEnText(parsed.en);
-      showBanner(`${text.voiceHeard}${lang === 'ru' ? parsed.ru : parsed.en}`);
+      const unifiedText = lang === 'ru' ? (parsed.ru || parsed.en) : (parsed.en || parsed.ru);
+      setInstructionText(unifiedText);
+      if (activeStepId) {
+        const updatedSteps = project.steps.map((s) =>
+          s.id === activeStepId ? { ...s, act: parsed.act, ru: unifiedText, en: unifiedText } : s
+        );
+        updateProject(project.id, { steps: updatedSteps }).then(() => onProjectUpdated());
+      }
+      showBanner(`${text.voiceHeard}${unifiedText}`);
     };
 
     controller.onStateChange = (listening: boolean) => {
@@ -523,12 +530,12 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
   useEffect(() => {
     if (activeStep) {
       setActiveActionType(activeStep.act);
-      setCustomRuText(activeStep.ru);
-      setCustomEnText(activeStep.en);
-      const match = activeStep.ru.match(/<b>(.*?)<\/b>/i) || activeStep.en.match(/<b>(.*?)<\/b>/i);
+      const unifiedText = lang === 'ru' ? (activeStep.ru || activeStep.en) : (activeStep.en || activeStep.ru);
+      setInstructionText(unifiedText || '');
+      const match = (activeStep.ru || '').match(/<b>(.*?)<\/b>/i) || (activeStep.en || '').match(/<b>(.*?)<\/b>/i);
       setTargetNameInput(match ? match[1] : '');
     }
-  }, [activeStep]);
+  }, [activeStep, lang]);
 
   // --- Coordinate Mapping Helpers (Normalized 0..100) ---
   const getNormalizedPoint = (
@@ -646,15 +653,13 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
 
     // If we are in Frozen context (refining existing step's box)
     if (isFrozenContext && activeStep) {
+      const defaultCursor = computeDefaultCursorPos(finalBox);
       const updatedSteps = project.steps.map((s) =>
         s.id === activeStep.id
           ? {
               ...s,
               box: finalBox,
-              cursorPos: {
-                x: Math.round((finalBox.x + finalBox.w / 2) * 10) / 10,
-                y: Math.round((finalBox.y + finalBox.h / 2) * 10) / 10,
-              },
+              cursorPos: defaultCursor,
             }
           : s
       );
@@ -685,17 +690,16 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
       }
       const newStepId = generateId();
       const initialInstructions = formatActionInstruction('click', '');
+      const unifiedText = lang === 'ru' ? initialInstructions.ru : initialInstructions.en;
+      const defaultCursor = computeDefaultCursorPos(finalBox);
       const newStep: GuideStep = {
         id: newStepId,
         screenshotId: lastCapturedScreenshot.id,
         act: 'click',
         box: finalBox,
-        cursorPos: {
-          x: Math.round((finalBox.x + finalBox.w / 2) * 10) / 10,
-          y: Math.round((finalBox.y + finalBox.h / 2) * 10) / 10,
-        },
-        ru: initialInstructions.ru,
-        en: initialInstructions.en,
+        cursorPos: defaultCursor,
+        ru: unifiedText,
+        en: unifiedText,
       };
 
       await updateProject(project.id, {
@@ -704,8 +708,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
       await onProjectUpdated();
       setActiveStepId(newStepId);
       setTargetNameInput('');
-      setCustomRuText(initialInstructions.ru);
-      setCustomEnText(initialInstructions.en);
+      setInstructionText(unifiedText);
       setPipViewMode('frozen');
       showBanner(text.stepAddedSameFrame.replace('{n}', String(project.steps.length + 1)));
       setDrawMode('shoot');
@@ -720,17 +723,16 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
 
       const newStepId = generateId();
       const initialInstructions = formatActionInstruction(activeActionType, targetNameInput);
+      const unifiedText = lang === 'ru' ? initialInstructions.ru : initialInstructions.en;
+      const defaultCursor = computeDefaultCursorPos(finalBox);
       const newStep: GuideStep = {
         id: newStepId,
         screenshotId: asset.id,
         act: activeActionType,
         box: finalBox,
-        cursorPos: {
-          x: Math.round((finalBox.x + finalBox.w / 2) * 10) / 10,
-          y: Math.round((finalBox.y + finalBox.h / 2) * 10) / 10,
-        },
-        ru: initialInstructions.ru,
-        en: initialInstructions.en,
+        cursorPos: defaultCursor,
+        ru: unifiedText,
+        en: unifiedText,
       };
 
       await updateProject(project.id, {
@@ -739,6 +741,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
       await onProjectUpdated();
 
       setActiveStepId(newStepId);
+      setInstructionText(unifiedText);
       setPipViewMode('frozen');
       showBanner(text.stepCapturedMsg.replace('{n}', String(project.steps.length + 1)));
     } catch (err: any) {
@@ -757,17 +760,16 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
       const newStepId = generateId();
       const initialBox: BoxRect = { x: 30, y: 35, w: 28, h: 14 };
       const initialInstructions = formatActionInstruction(activeActionType, targetNameInput);
+      const unifiedText = lang === 'ru' ? initialInstructions.ru : initialInstructions.en;
+      const defaultCursor = computeDefaultCursorPos(initialBox);
       const newStep: GuideStep = {
         id: newStepId,
         screenshotId: asset.id,
         act: activeActionType,
         box: initialBox,
-        cursorPos: {
-          x: Math.round((initialBox.x + initialBox.w / 2) * 10) / 10,
-          y: Math.round((initialBox.y + initialBox.h / 2) * 10) / 10,
-        },
-        ru: initialInstructions.ru,
-        en: initialInstructions.en,
+        cursorPos: defaultCursor,
+        ru: unifiedText,
+        en: unifiedText,
       };
 
       await updateProject(project.id, {
@@ -776,6 +778,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
       await onProjectUpdated();
 
       setActiveStepId(newStepId);
+      setInstructionText(unifiedText);
       setPipViewMode('frozen');
       showBanner(text.stepCapturedMsg.replace('{n}', String(project.steps.length + 1)));
     } catch (err: any) {
@@ -793,14 +796,16 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
 
       const newStepId = generateId();
       const initialInstructions = formatActionInstruction('look', '');
+      const unifiedText = lang === 'ru' ? initialInstructions.ru : initialInstructions.en;
+      const initialBox: BoxRect = { x: 15, y: 15, w: 70, h: 70 };
       const newStep: GuideStep = {
         id: newStepId,
         screenshotId: asset.id,
         act: 'look',
-        box: { x: 15, y: 15, w: 70, h: 70 },
-        cursorPos: { x: 50, y: 50 },
-        ru: initialInstructions.ru,
-        en: initialInstructions.en,
+        box: initialBox,
+        cursorPos: computeDefaultCursorPos(initialBox),
+        ru: unifiedText,
+        en: unifiedText,
       };
 
       await updateProject(project.id, {
@@ -808,6 +813,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
       });
       await onProjectUpdated();
       setActiveStepId(newStepId);
+      setInstructionText(unifiedText);
       setPipViewMode('frozen');
       showBanner(text.fullFrameCapturedMsg.replace('{n}', String(project.steps.length + 1)));
     } catch (err: any) {
@@ -820,12 +826,12 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
   const handleUpdateStepAction = async (newAct: ActionType) => {
     setActiveActionType(newAct);
     const updated = formatActionInstruction(newAct, targetNameInput);
-    setCustomRuText(updated.ru);
-    setCustomEnText(updated.en);
+    const unified = lang === 'ru' ? updated.ru : updated.en;
+    setInstructionText(unified);
 
     if (activeStep) {
       const updatedSteps = project.steps.map((s) =>
-        s.id === activeStep.id ? { ...s, act: newAct, ru: updated.ru, en: updated.en } : s
+        s.id === activeStep.id ? { ...s, act: newAct, ru: unified, en: unified } : s
       );
       await updateProject(project.id, { steps: updatedSteps });
       await onProjectUpdated();
@@ -835,35 +841,60 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
   const handleTargetNameChange = async (newName: string) => {
     setTargetNameInput(newName);
     const formatted = formatActionInstruction(activeActionType, newName);
-    setCustomRuText(formatted.ru);
-    setCustomEnText(formatted.en);
+    const unified = lang === 'ru' ? formatted.ru : formatted.en;
+    setInstructionText(unified);
 
     if (activeStep) {
       const updatedSteps = project.steps.map((s) =>
-        s.id === activeStep.id ? { ...s, ru: formatted.ru, en: formatted.en } : s
+        s.id === activeStep.id ? { ...s, ru: unified, en: unified } : s
       );
       await updateProject(project.id, { steps: updatedSteps });
       await onProjectUpdated();
     }
   };
 
-  const handleCustomRuChange = async (val: string) => {
-    setCustomRuText(val);
+  const handleInstructionChange = async (val: string) => {
+    setInstructionText(val);
     if (activeStep) {
-      const updatedSteps = project.steps.map((s) => (s.id === activeStep.id ? { ...s, ru: val } : s));
+      const updatedSteps = project.steps.map((s) => (s.id === activeStep.id ? { ...s, ru: val, en: val } : s));
       await updateProject(project.id, { steps: updatedSteps });
       await onProjectUpdated();
     }
   };
 
-  const handleCustomEnChange = async (val: string) => {
-    setCustomEnText(val);
-    if (activeStep) {
-      const updatedSteps = project.steps.map((s) => (s.id === activeStep.id ? { ...s, en: val } : s));
+  // --- InteractiveBoxEditor Callbacks for Frozen Step and PiP ---
+  const handleStepBoxAndCursorChange = useCallback(
+    async (newBox: BoxRect, newCursorPos: { x: number; y: number }) => {
+      if (!activeStep) return;
+      const updatedSteps = project.steps.map((s) =>
+        s.id === activeStep.id
+          ? {
+              ...s,
+              box: newBox,
+              cursorPos: newCursorPos,
+            }
+          : s
+      );
       await updateProject(project.id, { steps: updatedSteps });
       await onProjectUpdated();
-    }
-  };
+      showBanner(text.boxUpdatedMsg);
+    },
+    [activeStep, project.id, project.steps, onProjectUpdated, showBanner, text.boxUpdatedMsg]
+  );
+
+  const handleBoxDrawComplete = useCallback(
+    async (drawnBox: BoxRect, mode: 'target' | 'blur' | 'globalBlur' | 'mask') => {
+      if (mode === 'blur') {
+        if (!lastCapturedScreenshot) return;
+        const updatedBlurBoxes = [...lastCapturedScreenshot.blurBoxes, drawnBox];
+        await updateScreenshot(lastCapturedScreenshot.id, { blurBoxes: updatedBlurBoxes });
+        await onProjectUpdated();
+        showBanner(text.blurApplied);
+        setDrawMode('shoot');
+      }
+    },
+    [lastCapturedScreenshot, onProjectUpdated, showBanner, text.blurApplied]
+  );
 
   const handleDeleteActiveStep = async () => {
     if (!activeStepId) return;
@@ -881,14 +912,17 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
       const asset = await addScreenshot(project.id, blob, name);
       const newStepId = generateId();
       const initialInstructions = formatActionInstruction('click', '');
+      const unifiedText = lang === 'ru' ? initialInstructions.ru : initialInstructions.en;
+      const initialBox: BoxRect = { x: 30, y: 30, w: 20, h: 10 };
+      const defaultCursor = computeDefaultCursorPos(initialBox);
       const newStep: GuideStep = {
         id: newStepId,
         screenshotId: asset.id,
         act: 'click',
-        box: { x: 30, y: 30, w: 20, h: 10 },
-        cursorPos: { x: 40, y: 35 },
-        ru: initialInstructions.ru,
-        en: initialInstructions.en,
+        box: initialBox,
+        cursorPos: defaultCursor,
+        ru: unifiedText,
+        en: unifiedText,
       };
 
       await updateProject(project.id, {
@@ -896,6 +930,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
       });
       await onProjectUpdated();
       setActiveStepId(newStepId);
+      setInstructionText(unifiedText);
       setPipViewMode('frozen');
       showBanner(text.importedFromClipboard.replace('{n}', String(project.steps.length + 1)));
     } catch (err: any) {
@@ -1043,17 +1078,15 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
         {/* Viewport Area: Live Video OR Frozen Step */}
         <div
           ref={pipContainerRef}
-          onMouseDown={(e) => {
-            const targetMedia = isFrozen ? pipImageRef.current : pipVideoRef.current;
-            handleInteractionStart(e.clientX, e.clientY, pipContainerRef.current!, targetMedia);
-          }}
-          onMouseMove={(e) => {
-            const targetMedia = isFrozen ? pipImageRef.current : pipVideoRef.current;
-            handleInteractionMove(e.clientX, e.clientY, pipContainerRef.current!, targetMedia);
-          }}
-          onMouseUp={() => handleInteractionEnd(isFrozen)}
-          className={`relative w-full aspect-video bg-slate-900 rounded-lg overflow-hidden border mb-2 cursor-crosshair group select-none transition ${
-            isFrozen ? 'border-sky-500/80 ring-2 ring-sky-500/30' : 'border-slate-800'
+          onMouseDown={!isFrozen ? (e) => {
+            handleInteractionStart(e.clientX, e.clientY, pipContainerRef.current!, pipVideoRef.current);
+          } : undefined}
+          onMouseMove={!isFrozen ? (e) => {
+            handleInteractionMove(e.clientX, e.clientY, pipContainerRef.current!, pipVideoRef.current);
+          } : undefined}
+          onMouseUp={!isFrozen ? () => handleInteractionEnd(false) : undefined}
+          className={`relative w-full aspect-video bg-slate-900 rounded-lg overflow-hidden border mb-1.5 select-none transition ${
+            isFrozen ? 'border-sky-500/80 ring-2 ring-sky-500/30' : 'border-slate-800 cursor-crosshair'
           }`}
         >
           {/* Always keep video element alive to prevent stream interruptions */}
@@ -1065,49 +1098,51 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
             className={`w-full h-full object-contain pointer-events-none ${isFrozen ? 'hidden' : 'block'}`}
           />
 
-          {/* Frozen Step Image Preview */}
+          {/* Frozen Step Interactive Box & Cursor Editor */}
           {isFrozen && activeStep && assetUrls[activeStep.screenshotId] && (
-            <div className="relative w-full h-full flex items-center justify-center">
-              <img
-                ref={pipImageRef}
-                src={assetUrls[activeStep.screenshotId]}
-                alt="Captured Step"
-                className="w-full h-full object-contain pointer-events-none"
+            <div className="relative w-full h-full">
+              <InteractiveBoxEditor
+                imageUrl={assetUrls[activeStep.screenshotId]}
+                box={activeStep.box}
+                cursorPos={activeStep.cursorPos || computeDefaultCursorPos(activeStep.box)}
+                stepNumber={currentStepNum}
+                actionType={activeStep.act}
+                uiLang={lang}
+                blurBoxes={lastCapturedScreenshot?.blurBoxes}
+                globalBlurBoxes={project.globalBlurBoxes}
+                maskBoxes={lastCapturedScreenshot?.maskBoxes}
+                onChangeBoxAndCursor={handleStepBoxAndCursorChange}
+                onDrawComplete={handleBoxDrawComplete}
+                drawMode={drawMode === 'blur' ? 'blur' : 'target'}
               />
 
-              {/* Box Highlight on Frozen Step */}
-              <div
-                className="absolute border-2 border-rose-500 bg-rose-500/25 rounded pointer-events-none shadow-[0_0_14px_rgba(244,63,94,0.8)]"
-                style={{
-                  left: `${activeStep.box.x}%`,
-                  top: `${activeStep.box.y}%`,
-                  width: `${activeStep.box.w}%`,
-                  height: `${activeStep.box.h}%`,
-                }}
-              >
-                <div className="absolute -top-5 left-0 bg-rose-600 text-white text-[10px] font-bold px-1.5 py-0.2 rounded shadow whitespace-nowrap">
-                  #{currentStepNum} · {activeStep.act.toUpperCase()}
-                </div>
-              </div>
-
               {/* Frozen Badge Banner */}
-              <div className="absolute top-2 left-2 bg-emerald-600/90 text-white text-[11px] font-bold px-2.5 py-1 rounded-md shadow-md backdrop-blur flex items-center gap-1.5 pointer-events-none">
+              <div className="absolute top-2 left-2 bg-emerald-600/90 text-white text-[11px] font-bold px-2 py-0.5 rounded-md shadow-md backdrop-blur flex items-center gap-1.5 pointer-events-none z-30">
                 <CheckCircle2 className="w-3.5 h-3.5 text-white" />
                 <span>{text.stepCapturedTitle.replace('{n}', String(currentStepNum))}</span>
               </div>
             </div>
           )}
 
-          {/* Current Dragging Selection Overlay */}
-          {renderSelectionOverlay(currentBox)}
+          {/* Current Dragging Selection Overlay for Live Stream */}
+          {!isFrozen && renderSelectionOverlay(currentBox)}
 
-          {/* Hover Helper Tip Pill */}
-          <div className="absolute bottom-2 inset-x-2 flex justify-center pointer-events-none opacity-0 group-hover:opacity-100 transition">
-            <span className="text-[10px] bg-slate-900/95 text-slate-200 px-2 py-0.5 rounded shadow border border-slate-700">
-              {isFrozen ? text.refineBoxHint : text.livePreviewHint}
-            </span>
-          </div>
+          {/* Hover Helper Tip Pill for Live Stream */}
+          {!isFrozen && (
+            <div className="absolute bottom-2 inset-x-2 flex justify-center pointer-events-none opacity-0 group-hover:opacity-100 transition">
+              <span className="text-[10px] bg-slate-900/95 text-slate-200 px-2 py-0.5 rounded shadow border border-slate-700">
+                {text.livePreviewHint}
+              </span>
+            </div>
+          )}
         </div>
+
+        {/* Helpful Tip in PiP Floating Remote */}
+        {isFrozen && (
+          <div className="mb-2 px-2.5 py-1.5 bg-slate-900/95 border border-slate-800 rounded-lg text-[11px] text-amber-300 leading-tight flex items-center gap-1.5 shadow-sm">
+            <span>{text.boxEditorHint}</span>
+          </div>
+        )}
 
         {/* Primary Action Button Bar */}
         <div className="mb-2">
@@ -1208,6 +1243,17 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
                 value={targetNameInput}
                 onChange={(e) => handleTargetNameChange(e.target.value)}
                 placeholder={text.targetPlaceholder}
+                className="w-full bg-slate-950 border border-slate-700 rounded-md px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
+              />
+            </div>
+
+            {/* Unified Instruction Input */}
+            <div>
+              <input
+                type="text"
+                value={instructionText}
+                onChange={(e) => handleInstructionChange(e.target.value)}
+                placeholder={text.instruction}
                 className="w-full bg-slate-950 border border-slate-700 rounded-md px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
               />
             </div>
@@ -1517,16 +1563,16 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
           {/* Interactive Screen Container */}
           <div
             ref={containerRef}
-            onMouseDown={(e) => {
-              const targetMedia = isCapturingScreen ? videoRef.current : mainImageRef.current;
-              handleInteractionStart(e.clientX, e.clientY, containerRef.current!, targetMedia);
-            }}
-            onMouseMove={(e) => {
-              const targetMedia = isCapturingScreen ? videoRef.current : mainImageRef.current;
-              handleInteractionMove(e.clientX, e.clientY, containerRef.current!, targetMedia);
-            }}
-            onMouseUp={() => handleInteractionEnd(!isCapturingScreen && Boolean(activeStep))}
-            className={`flex-1 relative rounded-xl border border-slate-800 bg-slate-900/60 overflow-hidden flex items-center justify-center cursor-crosshair select-none min-h-[380px] ${
+            onMouseDown={isCapturingScreen ? (e) => {
+              handleInteractionStart(e.clientX, e.clientY, containerRef.current!, videoRef.current);
+            } : undefined}
+            onMouseMove={isCapturingScreen ? (e) => {
+              handleInteractionMove(e.clientX, e.clientY, containerRef.current!, videoRef.current);
+            } : undefined}
+            onMouseUp={isCapturingScreen ? () => handleInteractionEnd(false) : undefined}
+            className={`flex-1 relative rounded-xl border border-slate-800 bg-slate-900/60 overflow-hidden flex items-center justify-center select-none min-h-[380px] ${
+              isCapturingScreen ? 'cursor-crosshair' : ''
+            } ${
               drawMode === 'blur'
                 ? 'ring-2 ring-amber-500/50'
                 : drawMode === 'add_step_same_frame'
@@ -1543,26 +1589,26 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
                 className="w-full h-full object-contain pointer-events-none"
               />
             ) : lastCapturedScreenshot && assetUrls[lastCapturedScreenshot.id] ? (
-              <div className="relative w-full h-full flex items-center justify-center">
-                <img
-                  ref={mainImageRef}
-                  src={assetUrls[lastCapturedScreenshot.id]}
-                  alt="Last snapshot"
-                  className="w-full h-full object-contain pointer-events-none"
+              <div className="relative w-full h-full flex flex-col items-center justify-center">
+                <InteractiveBoxEditor
+                  imageUrl={assetUrls[lastCapturedScreenshot.id]}
+                  box={activeStep?.box || null}
+                  cursorPos={activeStep?.cursorPos || (activeStep?.box ? computeDefaultCursorPos(activeStep.box) : null)}
+                  stepNumber={activeStepIndex >= 0 ? activeStepIndex + 1 : undefined}
+                  actionType={activeStep?.act}
+                  uiLang={lang}
+                  blurBoxes={lastCapturedScreenshot?.blurBoxes}
+                  globalBlurBoxes={project.globalBlurBoxes}
+                  maskBoxes={lastCapturedScreenshot?.maskBoxes}
+                  onChangeBoxAndCursor={handleStepBoxAndCursorChange}
+                  onDrawComplete={handleBoxDrawComplete}
+                  drawMode={drawMode === 'blur' ? 'blur' : 'target'}
                 />
+
+                {/* Helpful Tip Hint Pill */}
                 {activeStep && (
-                  <div
-                    className="absolute border-2 border-rose-500 bg-rose-500/25 rounded pointer-events-none shadow-[0_0_14px_rgba(244,63,94,0.8)]"
-                    style={{
-                      left: `${activeStep.box.x}%`,
-                      top: `${activeStep.box.y}%`,
-                      width: `${activeStep.box.w}%`,
-                      height: `${activeStep.box.h}%`,
-                    }}
-                  >
-                    <div className="absolute -top-5 left-0 bg-rose-600 text-white text-[10px] font-bold px-1.5 py-0.2 rounded shadow">
-                      #{activeStepIndex + 1} · {activeStep.act.toUpperCase()}
-                    </div>
+                  <div className="absolute bottom-3 bg-slate-900/90 backdrop-blur border border-slate-700 text-xs px-3 py-1.5 rounded-lg flex items-center gap-2 pointer-events-none shadow-lg z-30 text-amber-300">
+                    <span>{text.boxEditorHint}</span>
                   </div>
                 )}
               </div>
@@ -1784,31 +1830,23 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
                 />
               </div>
 
-              {/* Instruction Text (EN & RU) */}
-              <div className="flex flex-col gap-2">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    {text.instructionEn}
+              {/* Unified Instruction Field */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+                    {text.instruction}
                   </label>
-                  <textarea
-                    rows={2}
-                    value={customEnText}
-                    onChange={(e) => handleCustomEnChange(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 resize-none font-mono"
-                  />
+                  <span className="text-[10px] text-slate-500">
+                    {lang === 'ru' ? 'Единый текст шага' : 'Unified step text'}
+                  </span>
                 </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    {text.instructionRu}
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={customRuText}
-                    onChange={(e) => handleCustomRuChange(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 resize-none font-mono"
-                  />
-                </div>
+                <textarea
+                  rows={2}
+                  value={instructionText}
+                  onChange={(e) => handleInstructionChange(e.target.value)}
+                  placeholder={lang === 'en' ? 'Click on Save button' : 'Нажмите кнопку Сохранить'}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 resize-none font-mono"
+                />
               </div>
 
               {/* Quick Actions Footer */}

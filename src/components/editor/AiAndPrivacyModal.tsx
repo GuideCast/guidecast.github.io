@@ -437,8 +437,8 @@ function BatchAiTab({
   const [isApplying, setIsApplying] = useState<boolean>(false);
 
   const generatedPrompt = useMemo(() => {
-    return generateBatchPromptForFreeAi(project);
-  }, [project]);
+    return generateBatchPromptForFreeAi(project, uiLang);
+  }, [project, uiLang]);
 
   async function handleCopyPrompt() {
     try {
@@ -479,7 +479,8 @@ function BatchAiTab({
     try {
       const { updatedSteps, appliedCount } = applyBatchAiJsonToSteps(
         project.steps,
-        rawAiResponse
+        rawAiResponse,
+        uiLang
       );
 
       if (appliedCount === 0) {
@@ -550,8 +551,8 @@ function BatchAiTab({
             </p>
             <p className="text-[11px] text-slate-500">
               {uiLang === 'en'
-                ? 'The AI generates concise bilingual instructions with <b>...</b> tags.'
-                : 'Нейросеть сформирует лаконичные двуязычные инструкции с тегами <b>...</b>.'}
+                ? 'The AI generates concise instructions with <b>...</b> tags.'
+                : 'Нейросеть сформирует лаконичные инструкции с тегами <b>...</b>.'}
             </p>
           </div>
 
@@ -813,17 +814,24 @@ function GeminiMicroCropTab({
         model,
         screenshotBlob: currentAsset.blob,
         step: currentStep,
+        targetLang: uiLang,
       });
 
-      setLastResult(res);
+      const instructionText = res.instruction || (uiLang === 'en' ? (res.en || res.ru) : (res.ru || res.en));
+
+      setLastResult({
+        en: instructionText,
+        ru: instructionText,
+        buttonLabel: res.buttonLabel,
+      });
 
       // Automatically update step in project
       const updatedSteps = project.steps.map((st) => {
         if (st.id === currentStep.id) {
           return {
             ...st,
-            en: res.en,
-            ru: res.ru,
+            en: instructionText,
+            ru: instructionText,
           };
         }
         return st;
@@ -848,9 +856,10 @@ function GeminiMicroCropTab({
       return;
     }
 
-    const emptySteps = project.steps.filter(
-      (s) => !s.ru || !s.en || s.ru.includes('Описание следующего') || s.en.includes('Next step')
-    );
+    const emptySteps = project.steps.filter((s) => {
+      const text = uiLang === 'en' ? (s.en || s.ru) : (s.ru || s.en);
+      return !text || text.includes('Next step') || text.includes('Описание следующего');
+    });
 
     if (emptySteps.length === 0) {
       alert(uiLang === 'en' ? 'All steps already have descriptions!' : 'Все шаги уже имеют описания!');
@@ -877,10 +886,12 @@ function GeminiMicroCropTab({
               model,
               screenshotBlob: asset.blob,
               step: st,
+              targetLang: uiLang,
             });
 
+            const instructionText = desc.instruction || (uiLang === 'en' ? (desc.en || desc.ru) : (desc.ru || desc.en));
             currentSteps = currentSteps.map((s) =>
-              s.id === st.id ? { ...s, en: desc.en, ru: desc.ru } : s
+              s.id === st.id ? { ...s, en: instructionText, ru: instructionText } : s
             );
           } catch (itemErr) {
             console.warn(`Step ${st.id} failed:`, itemErr);
@@ -910,20 +921,26 @@ function GeminiMicroCropTab({
   async function handleApplyLevel0Caption() {
     if (!manualLabel.trim()) return;
     const { en, ru } = buildSmartCaptionFromLabel(manualAct, manualLabel.trim());
+    const instructionText = uiLang === 'en' ? en : ru;
 
     const updatedSteps = project.steps.map((st) => {
       if (st.id === currentStep?.id) {
         return {
           ...st,
           act: manualAct,
-          en,
-          ru,
+          en: instructionText,
+          ru: instructionText,
         };
       }
       return st;
     });
 
     await onUpdateProject({ steps: updatedSteps });
+    setLastResult({
+      en: instructionText,
+      ru: instructionText,
+      buttonLabel: manualLabel.trim(),
+    });
     setManualLabel('');
   }
 
@@ -1022,11 +1039,14 @@ function GeminiMicroCropTab({
               onChange={(e) => setSelectedStepId(e.target.value)}
               className="text-xs p-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-semibold"
             >
-              {project.steps.map((st, idx) => (
-                <option key={st.id} value={st.id}>
-                  {idx + 1}. [{st.act}] {uiLang === 'en' ? (st.en ? st.en.substring(0, 35) + '...' : '(no text)') : (st.ru ? st.ru.substring(0, 35) + '...' : '(без текста)')}
-                </option>
-              ))}
+              {project.steps.map((st, idx) => {
+                const text = uiLang === 'en' ? (st.en || st.ru) : (st.ru || st.en);
+                return (
+                  <option key={st.id} value={st.id}>
+                    {idx + 1}. [{st.act}] {text ? (text.length > 35 ? text.substring(0, 35) + '...' : text) : (uiLang === 'en' ? '(no instruction)' : '(без инструкции)')}
+                  </option>
+                );
+              })}
             </select>
           </div>
         </div>
@@ -1176,19 +1196,16 @@ function GeminiMicroCropTab({
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs pt-1">
+            <div className="text-xs pt-1">
               <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-emerald-100 dark:border-emerald-900">
-                <span className="text-[10px] text-slate-400 block font-semibold mb-0.5">RU:</span>
+                <span className="text-[10px] text-slate-400 block font-semibold mb-0.5">
+                  {uiLang === 'en' ? 'Instruction:' : 'Инструкция:'}
+                </span>
                 <p
                   className="text-slate-800 dark:text-slate-100"
-                  dangerouslySetInnerHTML={{ __html: lastResult.ru }}
-                />
-              </div>
-              <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-emerald-100 dark:border-emerald-900">
-                <span className="text-[10px] text-slate-400 block font-semibold mb-0.5">EN:</span>
-                <p
-                  className="text-slate-800 dark:text-slate-100"
-                  dangerouslySetInnerHTML={{ __html: lastResult.en }}
+                  dangerouslySetInnerHTML={{
+                    __html: uiLang === 'en' ? (lastResult.en || lastResult.ru) : (lastResult.ru || lastResult.en),
+                  }}
                 />
               </div>
             </div>
@@ -1206,8 +1223,8 @@ function GeminiMicroCropTab({
         </h4>
         <p className="text-[11px] text-slate-500 mb-3">
           {uiLang === 'en'
-            ? 'Enter button label or screen text — template engine instantly crafts clean bilingual phrases with <b>...</b> tags:'
-            : 'Введите название кнопки или надпись с экрана — шаблонизатор мгновенно сформирует чистые двуязычные фразы с тегами <b>...</b>:'}
+            ? 'Enter button label or screen text — template engine instantly crafts clean instruction with <b>...</b> tags:'
+            : 'Введите название кнопки или надпись с экрана — шаблонизатор мгновенно сформирует чистую инструкцию с тегами <b>...</b>:'}
         </p>
 
         <div className="flex flex-wrap items-center gap-2">

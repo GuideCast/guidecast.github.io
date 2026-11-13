@@ -210,12 +210,15 @@ export function exportToLegacyJson(
     const origH = asset?.height || 1080;
     const box = percentToLegacyBox(st.box, dw, origW, origH);
 
+    const textEn = st.en || st.ru || '';
+    const textRu = st.ru || st.en || '';
+
     const legacy: LegacyStep = {
       img: asset?.filename || '1.png',
       act: st.act,
       box,
-      en: st.en,
-      ru: st.ru,
+      en: textEn,
+      ru: textRu,
     };
 
     if (st.chapterTitle) legacy.chapter = st.chapterTitle;
@@ -292,6 +295,9 @@ export async function exportStandaloneHtml(
   // Prepare steps
   const steps: StandaloneStep[] = project.steps.map((st) => {
     const asset = assetMap.get(st.screenshotId);
+    const textEn = st.en || st.ru || '';
+    const textRu = st.ru || st.en || '';
+
     return {
       img: asset ? asset.filename : '1.png',
       act: st.act,
@@ -301,8 +307,8 @@ export async function exportStandaloneHtml(
         Number(st.box.w.toFixed(2)),
         Number(st.box.h.toFixed(2)),
       ],
-      en: st.en,
-      ru: st.ru,
+      en: textEn,
+      ru: textRu,
       chapterTitle: st.chapterTitle,
       cursorPos: st.cursorPos
         ? [Number(st.cursorPos.x.toFixed(2)), Number(st.cursorPos.y.toFixed(2))]
@@ -310,21 +316,28 @@ export async function exportStandaloneHtml(
     };
   });
 
+  const isSingleLang = steps.length > 0 && steps.every((s) => s.en === s.ru);
+
+  const titleEn = project.titleEn || project.titleRu || project.pageTitle || 'Interactive Guide';
+  const titleRu = project.titleRu || project.titleEn || project.pageTitle || 'Интерактивное руководство';
+  const subEn = project.subEn || project.subRu || 'Step-by-step instructions';
+  const subRu = project.subRu || project.subEn || 'Пошаговые инструкции';
+
   const meta: StandaloneMeta = {
-    title_en: project.titleEn,
-    title_ru: project.titleRu,
-    sub_en: project.subEn,
-    sub_ru: project.subRu,
+    title_en: titleEn,
+    title_ru: titleRu,
+    sub_en: subEn,
+    sub_ru: subRu,
     default_lang: project.defaultLang,
   };
 
   const stepsJson = JSON.stringify(steps);
   const imagesJson = JSON.stringify(images);
   const metaJson = JSON.stringify(meta);
-  const pageTitle = project.pageTitle || 'Interactive Step Guide';
+  const pageTitle = (project.defaultLang === 'ru' ? titleRu : titleEn) || project.pageTitle || 'Interactive Step Guide';
 
   return `<!doctype html>
-<html lang="${project.defaultLang || 'ru'}">
+<html lang="${project.defaultLang || (isSingleLang ? 'en' : 'ru')}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -419,7 +432,7 @@ body.fs #fsx:hover{opacity:1}
       <button class="fsbtn" id="thmbtn" title="Theme">🌓</button>
       <button class="fsbtn" id="lsb"></button>
       <button class="fsbtn" id="fsb" title="F"></button>
-      <div class="seg" role="group" aria-label="Language">
+      <div class="seg" role="group" aria-label="Language"${isSingleLang ? ' style="display:none"' : ''}>
         <button data-lang="en" aria-pressed="false">EN</button>
         <button data-lang="ru" aria-pressed="true">RU</button>
       </div>
@@ -498,8 +511,8 @@ for (const l of ["en","ru"]) {
   if (META["sub_"+l]) I18N[l].sub = META["sub_"+l];
 }
 
-let lang = (META.default_lang && I18N[META.default_lang]) ? META.default_lang : "ru";
-try { const s = localStorage.getItem("lang"); if(s && I18N[s]) lang = s; } catch(e){}
+let lang = (META.default_lang && I18N[META.default_lang]) ? META.default_lang : "${isSingleLang ? (project.defaultLang || 'en') : 'ru'}";
+${isSingleLang ? '' : 'try { const s = localStorage.getItem("lang"); if(s && I18N[s]) lang = s; } catch(e){}'}
 
 let i = 0;
 let trainerMode = ${options.interactiveMode ? 'true' : 'true'};
@@ -534,12 +547,12 @@ function render() {
   hl.style.cssText = \`left:\${x}%;top:\${y}%;width:\${w}%;height:\${h}%\`;
   
   const c = $("cur");
-  if (s.cursorPos) {
+  if (s.cursorPos && Array.isArray(s.cursorPos)) {
     c.style.left = s.cursorPos[0] + "%";
     c.style.top = s.cursorPos[1] + "%";
   } else {
-    c.style.left = (x + w * 0.88) + "%";
-    c.style.top = (y + h * 0.82) + "%";
+    c.style.left = (x + w * 0.96) + "%";
+    c.style.top = (y + h * 0.92) + "%";
   }
 
   $("num").textContent = i + 1;

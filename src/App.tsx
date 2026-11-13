@@ -21,7 +21,6 @@ import {
   MicOff,
   Square,
   Wand2,
-  X,
   RefreshCw,
 } from 'lucide-react';
 
@@ -45,6 +44,10 @@ import {
   importFromLegacyFolder,
 } from './services/importerExporter';
 import { LiveCaptureWorkspace } from './components/capture/LiveCaptureWorkspace';
+import {
+  InteractiveBoxEditor,
+  computeDefaultCursorPos,
+} from './components/common/InteractiveBoxEditor';
 import { AiAndPrivacyModal } from './components/editor/AiAndPrivacyModal';
 import { WelcomeTourModal } from './components/onboarding/WelcomeTourModal';
 import {
@@ -66,7 +69,7 @@ import {
 } from './services/speechService';
 
 type ActiveTab = 'capture' | 'editor' | 'player';
-type EditorDrawTool = 'target' | 'step_blur' | 'global_blur' | 'mask';
+type EditorDrawTool = 'target' | 'blur' | 'globalBlur' | 'mask';
 
 export default function App() {
   const [uiLang, setUiLang] = useState<UiLang>(() => getSavedUiLang());
@@ -314,13 +317,19 @@ export default function App() {
   function handleAddStep(screenshotId?: string) {
     if (!activeProject) return;
     const targetShotId = screenshotId || screenshots[0]?.id || '';
+    const defaultBox = { x: 30, y: 30, w: 25, h: 12 };
+    const initialText =
+      uiLang === 'en'
+        ? 'Click on the highlighted element'
+        : 'Нажмите на выделенный элемент';
     const newStep: GuideStep = {
       id: generateId(),
       screenshotId: targetShotId,
       act: 'click',
-      box: { x: 30, y: 30, w: 25, h: 12 },
-      en: 'Click on the highlighted element',
-      ru: 'Нажмите на выделенный элемент',
+      box: defaultBox,
+      cursorPos: computeDefaultCursorPos(defaultBox),
+      en: initialText,
+      ru: initialText,
     };
     const updatedSteps = [...activeProject.steps, newStep];
     saveSteps(updatedSteps);
@@ -708,15 +717,10 @@ export default function App() {
                   }
                   onChange={(e) => {
                     const val = e.target.value;
-                    if (uiLang === 'en') {
-                      setActiveProject({ ...activeProject, titleEn: val });
-                      updateProject(activeProject.id, { titleEn: val });
-                    } else {
-                      setActiveProject({ ...activeProject, titleRu: val });
-                      updateProject(activeProject.id, { titleRu: val });
-                    }
+                    setActiveProject({ ...activeProject, titleEn: val, titleRu: val });
+                    updateProject(activeProject.id, { titleEn: val, titleRu: val });
                   }}
-                  placeholder={uiLang === 'en' ? 'Guide Title (EN)' : 'Заголовок гайда (RU)'}
+                  placeholder={uiLang === 'en' ? 'Guide Title' : 'Заголовок гайда'}
                   className="font-bold text-lg bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:border-teal-500 focus:outline-none w-full text-slate-800 dark:text-slate-100 transition"
                 />
                 <input
@@ -728,15 +732,10 @@ export default function App() {
                   }
                   onChange={(e) => {
                     const val = e.target.value;
-                    if (uiLang === 'en') {
-                      setActiveProject({ ...activeProject, subEn: val });
-                      updateProject(activeProject.id, { subEn: val });
-                    } else {
-                      setActiveProject({ ...activeProject, subRu: val });
-                      updateProject(activeProject.id, { subRu: val });
-                    }
+                    setActiveProject({ ...activeProject, subEn: val, subRu: val });
+                    updateProject(activeProject.id, { subEn: val, subRu: val });
                   }}
-                  placeholder={uiLang === 'en' ? 'Subtitle (EN)' : 'Подзаголовок (RU)'}
+                  placeholder={uiLang === 'en' ? 'Subtitle (optional)' : 'Подзаголовок (опционально)'}
                   className="text-xs text-slate-500 dark:text-slate-400 bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:border-teal-500 focus:outline-none w-full transition"
                 />
               </div>
@@ -1119,13 +1118,9 @@ function StepEditorPanel({
 }) {
   const currentAsset = screenshots.find((s) => s.id === step.screenshotId) || screenshots[0];
   const [imageUrl, setImageUrl] = useState<string>('');
-  const imgContainerRef = useRef<HTMLDivElement>(null);
 
-  // Active mouse drawing tool
-  const [drawTool, setDrawTool] = useState<EditorDrawTool>('target');
-  const [isDrawing, setIsDrawing] = useState<boolean>(false);
-  const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
-  const [currentBox, setCurrentBox] = useState<BoxRect | null>(null);
+  // Active mouse drawing tool for InteractiveBoxEditor
+  const [drawMode, setDrawMode] = useState<EditorDrawTool>('target');
 
   // Voice Dictation
   const [isDictating, setIsDictating] = useState<boolean>(false);
@@ -1176,16 +1171,21 @@ function StepEditorPanel({
         setLiveTranscript(transcript);
       };
       controller.onParsedStep = (parsed: ParsedVoiceStep) => {
+        const textVal =
+          (dictationLang === 'en-US' ? parsed.en : parsed.ru) ||
+          parsed.ru ||
+          parsed.en ||
+          '';
         onUpdateStep({
           act: parsed.act,
-          ru: parsed.ru,
-          en: parsed.en,
+          ru: textVal,
+          en: textVal,
           voiceDraft: parsed.rawTranscript,
         });
         showStatus(
           uiLang === 'en'
-            ? `Voice recognized: ${parsed.en}`
-            : `Голос распознан: ${parsed.ru}`
+            ? `Voice recognized: ${textVal}`
+            : `Голос распознан: ${textVal}`
         );
       };
       controller.onStateChange = (listening) => {
@@ -1258,9 +1258,10 @@ function StepEditorPanel({
         step,
       });
 
+      const textVal = uiLang === 'en' ? (result.en || result.ru) : (result.ru || result.en);
       onUpdateStep({
-        ru: result.ru,
-        en: result.en,
+        ru: textVal,
+        en: textVal,
         voiceDraft: result.buttonLabel
           ? `${uiLang === 'en' ? 'Element' : 'Элемент'}: ${result.buttonLabel}`
           : step.voiceDraft,
@@ -1282,111 +1283,53 @@ function StepEditorPanel({
     }
   };
 
-  // Mouse drag handlers on image canvas
-  function handleMouseDown(e: React.MouseEvent<HTMLDivElement>) {
-    if (e.button !== 0 || !imgContainerRef.current) return;
-    const rect = imgContainerRef.current.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    setIsDrawing(true);
-    setStartPoint({ x, y });
-    setCurrentBox({ x, y, w: 0, h: 0 });
-  }
+  // Privacy Box Add / Remove Handlers for InteractiveBoxEditor
+  const handleAddBlurBox = async (newBox: BoxRect) => {
+    if (!currentAsset) return;
+    const nextBlur = [...(currentAsset.blurBoxes || []), newBox];
+    await onUpdateScreenshot(currentAsset.id, { blurBoxes: nextBlur });
+    showStatus(
+      uiLang === 'en'
+        ? '🌫 Step blur added to this frame'
+        : '🌫 Добавлено локальное размытие на этом кадре'
+    );
+  };
 
-  function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
-    if (!isDrawing || !startPoint || !imgContainerRef.current) return;
-    const rect = imgContainerRef.current.getBoundingClientRect();
-    const curX = ((e.clientX - rect.left) / rect.width) * 100;
-    const curY = ((e.clientY - rect.top) / rect.height) * 100;
-
-    const left = Math.max(0, Math.min(100, Math.min(startPoint.x, curX)));
-    const top = Math.max(0, Math.min(100, Math.min(startPoint.y, curY)));
-    const width = Math.max(0.5, Math.min(100 - left, Math.abs(curX - startPoint.x)));
-    const height = Math.max(0.5, Math.min(100 - top, Math.abs(curY - startPoint.y)));
-
-    const newRect: BoxRect = {
-      x: Number(left.toFixed(2)),
-      y: Number(top.toFixed(2)),
-      w: Number(width.toFixed(2)),
-      h: Number(height.toFixed(2)),
-    };
-
-    setCurrentBox(newRect);
-
-    // If drawing target box, update live
-    if (drawTool === 'target') {
-      onUpdateStep({ box: newRect });
-    }
-  }
-
-  async function handleMouseUp() {
-    if (!isDrawing || !currentBox) {
-      setIsDrawing(false);
-      setStartPoint(null);
-      setCurrentBox(null);
-      return;
-    }
-
-    const finalBox = { ...currentBox };
-    setIsDrawing(false);
-    setStartPoint(null);
-    setCurrentBox(null);
-
-    // Ignore tiny accidental clicks
-    if (finalBox.w < 1 || finalBox.h < 1) return;
-
-    if (drawTool === 'target') {
-      onUpdateStep({ box: finalBox });
-      showStatus(uiLang === 'en' ? 'Target box updated' : 'Рамка шага обновлена');
-    } else if (drawTool === 'step_blur') {
-      if (currentAsset) {
-        const nextBlur = [...(currentAsset.blurBoxes || []), finalBox];
-        await onUpdateScreenshot(currentAsset.id, { blurBoxes: nextBlur });
-        showStatus(
-          uiLang === 'en'
-            ? '🌫 Step blur added to this frame'
-            : '🌫 Добавлено локальное размытие на этом кадре'
-        );
-      }
-    } else if (drawTool === 'global_blur') {
-      const nextGlobal = [...(project.globalBlurBoxes || []), finalBox];
-      await onUpdateProject({ globalBlurBoxes: nextGlobal });
-      showStatus(
-        uiLang === 'en'
-          ? '📌 Global blur added across all frames'
-          : '📌 Добавлено сквозное размытие на все кадры'
-      );
-    } else if (drawTool === 'mask') {
-      if (currentAsset) {
-        const nextMasks = [...(currentAsset.maskBoxes || []), finalBox];
-        await onUpdateScreenshot(currentAsset.id, { maskBoxes: nextMasks });
-        showStatus(
-          uiLang === 'en'
-            ? '🎨 Mask patch added to this frame'
-            : '🎨 Добавлена маска-плашка на этом кадре'
-        );
-      }
-    }
-  }
-
-  // Delete handlers for privacy boxes
-  const handleDeleteStepBlur = async (idx: number, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleRemoveBlurBox = async (idx: number) => {
     if (!currentAsset) return;
     const nextBlur = (currentAsset.blurBoxes || []).filter((_, i) => i !== idx);
     await onUpdateScreenshot(currentAsset.id, { blurBoxes: nextBlur });
     showStatus(uiLang === 'en' ? 'Step blur removed' : 'Локальное размытие удалено');
   };
 
-  const handleDeleteGlobalBlur = async (idx: number, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleAddGlobalBlurBox = async (newBox: BoxRect) => {
+    const nextGlobal = [...(project.globalBlurBoxes || []), newBox];
+    await onUpdateProject({ globalBlurBoxes: nextGlobal });
+    showStatus(
+      uiLang === 'en'
+        ? '📌 Global blur added across all frames'
+        : '📌 Добавлено сквозное размытие на все кадры'
+    );
+  };
+
+  const handleRemoveGlobalBlurBox = async (idx: number) => {
     const nextGlobal = (project.globalBlurBoxes || []).filter((_, i) => i !== idx);
     await onUpdateProject({ globalBlurBoxes: nextGlobal });
     showStatus(uiLang === 'en' ? 'Global blur removed' : 'Сквозное размытие удалено');
   };
 
-  const handleDeleteMask = async (idx: number, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleAddMaskBox = async (newBox: BoxRect) => {
+    if (!currentAsset) return;
+    const nextMasks = [...(currentAsset.maskBoxes || []), newBox];
+    await onUpdateScreenshot(currentAsset.id, { maskBoxes: nextMasks });
+    showStatus(
+      uiLang === 'en'
+        ? '🎨 Mask patch added to this frame'
+        : '🎨 Добавлена маска-плашка на этом кадре'
+    );
+  };
+
+  const handleRemoveMaskBox = async (idx: number) => {
     if (!currentAsset) return;
     const nextMasks = (currentAsset.maskBoxes || []).filter((_, i) => i !== idx);
     await onUpdateScreenshot(currentAsset.id, { maskBoxes: nextMasks });
@@ -1556,54 +1499,54 @@ function StepEditorPanel({
 
           <button
             type="button"
-            onClick={() => setDrawTool('target')}
+            onClick={() => setDrawMode('target')}
             className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
-              drawTool === 'target'
-                ? 'bg-red-600 text-white shadow-xs'
+              drawMode === 'target'
+                ? 'bg-rose-600 text-white shadow-xs'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
-            <span className="w-2 h-2 rounded-full bg-red-400" />
-            <span>{uiLang === 'en' ? '🔴 Target Box' : '🔴 Рамка шага (Target Box)'}</span>
+            <span className="w-2 h-2 rounded-full bg-rose-400" />
+            <span>{uiLang === 'en' ? '🔴 Target Box' : '🔴 Рамка шага'}</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setDrawTool('step_blur')}
+            onClick={() => setDrawMode('blur')}
             className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
-              drawTool === 'step_blur'
+              drawMode === 'blur'
                 ? 'bg-amber-600 text-white shadow-xs'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
             <span className="w-2 h-2 rounded-full bg-amber-400" />
-            <span>{uiLang === 'en' ? '🌫 Step Blur' : '🌫 Блюр на этом кадре (Step Blur)'}</span>
+            <span>{uiLang === 'en' ? '🌫 Step Blur' : '🌫 Локальный блюр'}</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setDrawTool('global_blur')}
+            onClick={() => setDrawMode('globalBlur')}
             className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
-              drawTool === 'global_blur'
+              drawMode === 'globalBlur'
                 ? 'bg-purple-600 text-white shadow-xs'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
             <span className="w-2 h-2 rounded-full bg-purple-400" />
-            <span>{uiLang === 'en' ? '📌 Global Blur (All)' : '📌 Сквозной блюр на все кадры'}</span>
+            <span>{uiLang === 'en' ? '📌 Global Blur' : '📌 Сквозной блюр'}</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setDrawTool('mask')}
+            onClick={() => setDrawMode('mask')}
             className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
-              drawTool === 'mask'
+              drawMode === 'mask'
                 ? 'bg-slate-800 text-white border border-slate-600 shadow-xs'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
             <Square className="w-3 h-3 text-slate-400" />
-            <span>{uiLang === 'en' ? '🎨 Mask Patch' : '🎨 Маска-ластик (Mask)'}</span>
+            <span>{uiLang === 'en' ? '🎨 Mask Patch' : '🎨 Маска-ластик'}</span>
           </button>
         </div>
 
@@ -1619,130 +1562,30 @@ function StepEditorPanel({
         </div>
       </div>
 
-      {/* Visual Canvas stage */}
-      <div className="relative border border-slate-300 dark:border-slate-700 rounded-xl overflow-hidden bg-slate-950 flex items-center justify-center">
+      {/* Visual Canvas stage with InteractiveBoxEditor */}
+      <div className="relative border border-slate-300 dark:border-slate-700 rounded-xl overflow-hidden bg-slate-950 flex items-center justify-center min-h-[340px]">
         {imageUrl ? (
-          <div
-            ref={imgContainerRef}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            className="relative w-full cursor-crosshair select-none"
-          >
-            <img src={imageUrl} alt="" className="w-full h-auto block pointer-events-none" />
-
-            {/* Step Highlight Target Box */}
-            <div
-              className="absolute border-2 border-red-500 rounded bg-red-500/20 pointer-events-none shadow-sm transition-all"
-              style={{
-                left: `${step.box.x}%`,
-                top: `${step.box.y}%`,
-                width: `${step.box.w}%`,
-                height: `${step.box.h}%`,
-              }}
-            >
-              <span className="absolute -top-5 left-0 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap">
-                {stepIndex + 1}. {step.act}
-              </span>
-            </div>
-
-            {/* Display Global Blur Boxes (applied to all frames) */}
-            {project.globalBlurBoxes?.map((b, i) => (
-              <div
-                key={`global_${i}`}
-                className="absolute border border-purple-400 bg-purple-500/25 backdrop-blur-sm group select-none"
-                style={{
-                  left: `${b.x}%`,
-                  top: `${b.y}%`,
-                  width: `${b.w}%`,
-                  height: `${b.h}%`,
-                }}
-              >
-                <span className="text-[9px] bg-purple-600 text-white font-semibold px-1 rounded absolute top-0 left-0">
-                  {uiLang === 'en' ? '📌 global' : '📌 сквозной'}
-                </span>
-                <button
-                  type="button"
-                  onClick={(e) => handleDeleteGlobalBlur(i, e)}
-                  className="absolute top-0 right-0 bg-red-600 text-white rounded-full p-0.5 hover:bg-red-700 opacity-80 hover:opacity-100 transition shadow"
-                  title={uiLang === 'en' ? 'Remove this global blur' : 'Удалить этот сквозной блюр'}
-                >
-                  <X className="w-2.5 h-2.5" />
-                </button>
-              </div>
-            ))}
-
-            {/* Display Screenshot-specific Blur Boxes */}
-            {currentAsset?.blurBoxes?.map((b, i) => (
-              <div
-                key={`step_blur_${i}`}
-                className="absolute border border-amber-400 bg-amber-400/25 backdrop-blur-sm group select-none"
-                style={{
-                  left: `${b.x}%`,
-                  top: `${b.y}%`,
-                  width: `${b.w}%`,
-                  height: `${b.h}%`,
-                }}
-              >
-                <span className="text-[9px] bg-amber-500 text-black font-semibold px-1 rounded absolute top-0 left-0">
-                  {uiLang === 'en' ? '🌫 frame' : '🌫 кадр'}
-                </span>
-                <button
-                  type="button"
-                  onClick={(e) => handleDeleteStepBlur(i, e)}
-                  className="absolute top-0 right-0 bg-red-600 text-white rounded-full p-0.5 hover:bg-red-700 opacity-80 hover:opacity-100 transition shadow"
-                  title={uiLang === 'en' ? 'Remove this step blur' : 'Удалить это локальное размытие'}
-                >
-                  <X className="w-2.5 h-2.5" />
-                </button>
-              </div>
-            ))}
-
-            {/* Display Screenshot-specific Mask Boxes */}
-            {currentAsset?.maskBoxes?.map((b, i) => (
-              <div
-                key={`mask_${i}`}
-                className="absolute border border-slate-500 bg-slate-900 group select-none"
-                style={{
-                  left: `${b.x}%`,
-                  top: `${b.y}%`,
-                  width: `${b.w}%`,
-                  height: `${b.h}%`,
-                }}
-              >
-                <span className="text-[9px] bg-slate-700 text-white px-1 rounded absolute top-0 left-0">
-                  {uiLang === 'en' ? '🎨 mask' : '🎨 маска'}
-                </span>
-                <button
-                  type="button"
-                  onClick={(e) => handleDeleteMask(i, e)}
-                  className="absolute top-0 right-0 bg-red-600 text-white rounded-full p-0.5 hover:bg-red-700 opacity-80 hover:opacity-100 transition shadow"
-                  title={uiLang === 'en' ? 'Remove this mask' : 'Удалить эту маску'}
-                >
-                  <X className="w-2.5 h-2.5" />
-                </button>
-              </div>
-            ))}
-
-            {/* In-progress drawing preview box */}
-            {isDrawing && currentBox && drawTool !== 'target' && (
-              <div
-                className={`absolute pointer-events-none border-2 border-dashed ${
-                  drawTool === 'step_blur'
-                    ? 'border-amber-400 bg-amber-400/20 backdrop-blur-sm'
-                    : drawTool === 'global_blur'
-                    ? 'border-purple-400 bg-purple-500/20 backdrop-blur-sm'
-                    : 'border-slate-300 bg-slate-900/80'
-                }`}
-                style={{
-                  left: `${currentBox.x}%`,
-                  top: `${currentBox.y}%`,
-                  width: `${currentBox.w}%`,
-                  height: `${currentBox.h}%`,
-                }}
-              />
-            )}
-          </div>
+          <InteractiveBoxEditor
+            imageUrl={imageUrl}
+            box={step.box}
+            cursorPos={step.cursorPos || computeDefaultCursorPos(step.box)}
+            onChangeBoxAndCursor={(newBox, newCursorPos) => {
+              onUpdateStep({ box: newBox, cursorPos: newCursorPos });
+            }}
+            stepNumber={stepIndex + 1}
+            actionType={step.act}
+            drawMode={drawMode}
+            blurBoxes={currentAsset?.blurBoxes}
+            globalBlurBoxes={project.globalBlurBoxes}
+            maskBoxes={currentAsset?.maskBoxes}
+            onAddBlurBox={handleAddBlurBox}
+            onRemoveBlurBox={handleRemoveBlurBox}
+            onAddGlobalBlurBox={handleAddGlobalBlurBox}
+            onRemoveGlobalBlurBox={handleRemoveGlobalBlurBox}
+            onAddMaskBox={handleAddMaskBox}
+            onRemoveMaskBox={handleRemoveMaskBox}
+            uiLang={uiLang}
+          />
         ) : (
           <div className="py-24 text-slate-500 text-xs">
             {uiLang === 'en' ? 'No attached image' : 'Нет привязанного изображения'}
@@ -1752,61 +1595,36 @@ function StepEditorPanel({
 
       <p className="text-[11px] text-slate-400 text-center">
         {uiLang === 'en'
-          ? `💡 Click and drag mouse across the screenshot above to draw with the selected tool (${
-              drawTool === 'target'
-                ? '🔴 Target Box'
-                : drawTool === 'step_blur'
-                ? '🌫 Step Blur'
-                : drawTool === 'global_blur'
-                ? '📌 Global Blur'
-                : '🎨 Mask Patch'
-            }).`
-          : `💡 Зажмите и потяните мышь по скриншоту выше, чтобы применить выбранный инструмент (${
-              drawTool === 'target'
-                ? '🔴 Рамка шага'
-                : drawTool === 'step_blur'
-                ? '🌫 Локальный блюр'
-                : drawTool === 'global_blur'
-                ? '📌 Сквозной блюр'
-                : '🎨 Маска-плашка'
-            }).`}
+          ? '💡 Drag red box to move, pull any of the 8 handles to resize, or drag the ↖ mouse pointer so it never covers button text.'
+          : '💡 Перетаскивайте рамку целиком, тяните за 8 маркеров по краям для изменения размера, или сдвиньте ↖ указатель мыши, чтобы он не закрывал буквы.'}
       </p>
 
-      {/* Russian and English texts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-            {uiLang === 'en' ? 'Russian Instruction (RU)' : 'Инструкция на русском (RU)'}
+      {/* Single Unified Instruction field */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+            {uiLang === 'en' ? 'Instruction' : 'Инструкция'}
           </label>
-          <textarea
-            rows={3}
-            value={step.ru}
-            onChange={(e) => onUpdateStep({ ru: e.target.value })}
-            placeholder={
-              uiLang === 'en'
-                ? 'e.g. Нажмите <b>+ Создать</b> для добавления элемента...'
-                : 'Нажмите <b>+ Создать</b> для добавления элемента...'
-            }
-            className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
-          />
+          <span className="text-[10px] text-slate-400">
+            {uiLang === 'en'
+              ? 'Supports <b>bold</b> for button names'
+              : 'Поддерживает <b>жирный</b> для названий кнопок'}
+          </span>
         </div>
-
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-            {uiLang === 'en' ? 'English Instruction (EN)' : 'Инструкция на английском (EN)'}
-          </label>
-          <textarea
-            rows={3}
-            value={step.en}
-            onChange={(e) => onUpdateStep({ en: e.target.value })}
-            placeholder={
-              uiLang === 'en'
-                ? 'Click <b>+ New</b> to add a new item...'
-                : 'Например: Click <b>+ New</b> to add a new item...'
-            }
-            className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
-          />
-        </div>
+        <textarea
+          rows={3}
+          value={uiLang === 'en' ? (step.en || step.ru || '') : (step.ru || step.en || '')}
+          onChange={(e) => {
+            const val = e.target.value;
+            onUpdateStep({ en: val, ru: val });
+          }}
+          placeholder={
+            uiLang === 'en'
+              ? 'Click <b>+ New</b> to add a new item...'
+              : 'Нажмите <b>+ Создать</b> для добавления элемента...'
+          }
+          className="w-full text-xs p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-normal focus:ring-2 focus:ring-teal-500 focus:outline-none transition leading-relaxed"
+        />
       </div>
 
       {/* Additional options */}
@@ -1825,9 +1643,16 @@ function StepEditorPanel({
           </span>
         </label>
 
-        <span className="text-slate-400 font-mono text-[11px]">
-          {uiLang === 'en' ? 'Box' : 'Рамка'}: [{step.box.x}%, {step.box.y}%, {step.box.w}%, {step.box.h}%]
-        </span>
+        <div className="flex items-center gap-3 text-slate-400 font-mono text-[11px]">
+          <span>
+            {uiLang === 'en' ? 'Box' : 'Рамка'}: [{step.box.x}%, {step.box.y}%, {step.box.w}%, {step.box.h}%]
+          </span>
+          {step.cursorPos && (
+            <span>
+              {uiLang === 'en' ? 'Cursor' : 'Курсор'}: [{step.cursorPos.x}%, {step.cursorPos.y}%]
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1928,6 +1753,48 @@ function LivePlayerPreview({
           </div>
         )}
 
+        {/* Global Blur Boxes */}
+        {project.globalBlurBoxes?.map((b, i) => (
+          <div
+            key={`pb_g_${i}`}
+            className="absolute border border-purple-500/50 bg-purple-500/20 backdrop-blur-md pointer-events-none z-10"
+            style={{
+              left: `${b.x}%`,
+              top: `${b.y}%`,
+              width: `${b.w}%`,
+              height: `${b.h}%`,
+            }}
+          />
+        ))}
+
+        {/* Step Blur Boxes */}
+        {asset?.blurBoxes?.map((b, i) => (
+          <div
+            key={`pb_b_${i}`}
+            className="absolute border border-amber-500/50 bg-amber-500/20 backdrop-blur-md pointer-events-none z-10"
+            style={{
+              left: `${b.x}%`,
+              top: `${b.y}%`,
+              width: `${b.w}%`,
+              height: `${b.h}%`,
+            }}
+          />
+        ))}
+
+        {/* Mask Boxes */}
+        {asset?.maskBoxes?.map((b, i) => (
+          <div
+            key={`pb_m_${i}`}
+            className="absolute bg-slate-950 pointer-events-none z-10"
+            style={{
+              left: `${b.x}%`,
+              top: `${b.y}%`,
+              width: `${b.w}%`,
+              height: `${b.h}%`,
+            }}
+          />
+        ))}
+
         {/* Pulsing Highlight Box */}
         <div
           onClick={() => {
@@ -1935,7 +1802,7 @@ function LivePlayerPreview({
               setCurrentStepIdx((idx) => (idx === project.steps.length - 1 ? 0 : idx + 1));
             }
           }}
-          className="absolute border-2 border-red-500 rounded cursor-pointer animate-pulse transition hover:border-teal-400"
+          className="absolute border-2 border-red-500 rounded cursor-pointer animate-pulse transition hover:border-teal-400 z-15"
           style={{
             left: `${s.box.x}%`,
             top: `${s.box.y}%`,
@@ -1951,6 +1818,43 @@ function LivePlayerPreview({
               : ''
           }
         />
+
+        {/* SVG Cursor Pointer with accurate cursorPos */}
+        {(() => {
+          const curX =
+            s.cursorPos && typeof s.cursorPos.x === 'number'
+              ? s.cursorPos.x
+              : s.box.x + s.box.w * 0.96;
+          const curY =
+            s.cursorPos && typeof s.cursorPos.y === 'number'
+              ? s.cursorPos.y
+              : s.box.y + s.box.h * 0.92;
+
+          return (
+            <div
+              className="absolute pointer-events-none transition-all duration-300 ease-out z-20"
+              style={{
+                left: `${curX}%`,
+                top: `${curY}%`,
+                transform: 'translate(-16.67%, -8.33%)',
+              }}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="w-7 h-7 drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] filter animate-pulse"
+                aria-hidden="true"
+              >
+                <path
+                  d="M4 2l15 9.5-6.5 1.6 3.7 6.9-3 1.6-3.7-6.9L4.5 19z"
+                  fill="#ffffff"
+                  stroke="#111111"
+                  strokeWidth="1.5"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Panel */}

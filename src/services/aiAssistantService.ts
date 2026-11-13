@@ -151,24 +151,52 @@ export async function cropStepTargetImage(
  * Level 1 (Free Batch Prompt for Any AI Chat — 0 API Keys).
  * Generates ready-to-copy prompt for ChatGPT, Claude, Gemini, DeepSeek.
  */
-export function generateBatchPromptForFreeAi(project: GuideProject): string {
+export function generateBatchPromptForFreeAi(
+  project: GuideProject,
+  targetLang: 'en' | 'ru' = 'en'
+): string {
+  const isEn = targetLang === 'en';
   const stepsData = project.steps.map((st, idx) => ({
     stepIndex: idx,
     action: st.act,
     voiceDraft: st.voiceDraft || '',
-    currentRu: st.ru || '',
-    currentEn: st.en || '',
+    currentInstruction: isEn ? (st.en || st.ru || '') : (st.ru || st.en || ''),
     chapterTitle: st.chapterTitle || '',
   }));
 
-  return `Ты профессиональный технический писатель и составитель интерактивных обучающих руководств.
-Твоя задача — превратить черновые голосовые заметки и действия шагов в лаконичные, профессиональные инструкции для пользователей на двух языках (английском и русском).
+  if (isEn) {
+    return `You are a professional technical writer and author of interactive step-by-step guides.
+Your task is to turn rough voice drafts and step actions into concise, professional step-by-step user instructions in English.
 
-Проект: "${project.titleRu || project.titleEn}"
+Project: "${project.titleEn || project.titleRu || project.pageTitle}"
+${project.subEn || project.subRu ? `Description: "${project.subEn || project.subRu}"\n` : ''}
+Formatting rules:
+1. Wrap names of buttons, tabs, input fields, menus, and links in <b>...</b> tags (e.g. "Click <b>+ New Pipeline</b>." or "Type <b>admin</b> into the username field.").
+2. Keep instructions brief, clear, and action-oriented (1-2 sentences per step).
+3. If a step logically starts a new section, specify a clear "chapterTitle" (e.g. "1. Connecting Data Source").
+4. RETURN STRICTLY A VALID JSON ARRAY with no markdown formatting, no conversational text, and no explanation.
+
+Steps to process:
+${JSON.stringify(stepsData, null, 2)}
+
+Expected response format (strictly valid JSON array):
+[
+  {
+    "stepIndex": 0,
+    "instruction": "In the top navigation bar, click <b>+ New Pipeline</b>.",
+    "chapterTitle": "Create New Pipeline"
+  }
+]`;
+  }
+
+  return `Ты профессиональный технический писатель и составитель интерактивных обучающих руководств.
+Твоя задача — превратить черновые голосовые заметки и действия шагов в лаконичные, профессиональные инструкции для пользователей на русском языке.
+
+Проект: "${project.titleRu || project.titleEn || project.pageTitle}"
 ${project.subRu || project.subEn ? `Описание: "${project.subRu || project.subEn}"\n` : ''}
 Правила оформления инструкций:
 1. Выделяй названия кнопок, вкладок, полей ввода, пунктов меню и ссылок тегами <b>...</b> (например, "Нажмите <b>+ Создать</b>." или "Click <b>+ New Item</b>.").
-2. Если названия кнопок в интерфейсе на английском языке — сохраняй их точное написание на английском и в русской, и в английской версии.
+2. Если названия кнопок в интерфейсе на английском языке — сохраняй их точное написание на английском внутри тегов <b>...</b>.
 3. Инструкции должны быть краткими, четкими и побудительными (1-2 предложения на шаг).
 4. Если шаг логически начинает новый раздел гайда, укажи или уточни понятный "chapterTitle" (например, "1. Подключение источника").
 5. ВЕРНИ СТРОГО ВАЛИДНЫЙ JSON-МАССИВ без дополнительного вступительного и заключительного текста, без markdown-обёрток или комментариев.
@@ -180,8 +208,7 @@ ${JSON.stringify(stepsData, null, 2)}
 [
   {
     "stepIndex": 0,
-    "en": "In the top navigation bar, click <b>+ New Pipeline</b>.",
-    "ru": "На верхней панели навигации нажмите <b>+ New Pipeline</b>.",
+    "instruction": "На верхней панели навигации нажмите <b>+ New Pipeline</b>.",
     "chapterTitle": "Создание нового пайплайна"
   }
 ]`;
@@ -191,6 +218,8 @@ export interface BatchAiStepOutput {
   stepIndex?: number;
   step_index?: number;
   index?: number;
+  instruction?: string;
+  text?: string;
   en?: string;
   ru?: string;
   chapterTitle?: string;
@@ -205,7 +234,8 @@ export interface BatchAiStepOutput {
  */
 export function applyBatchAiJsonToSteps(
   steps: GuideStep[],
-  rawAiOutput: string
+  rawAiOutput: string,
+  targetLang: 'en' | 'ru' = 'en'
 ): { updatedSteps: GuideStep[]; appliedCount: number } {
   if (!rawAiOutput || !rawAiOutput.trim()) {
     return { updatedSteps: [...steps], appliedCount: 0 };
@@ -257,15 +287,20 @@ export function applyBatchAiJsonToSteps(
 
     if (typeof targetIdx === 'number' && targetIdx >= 0 && targetIdx < updatedSteps.length) {
       const existing = updatedSteps[targetIdx];
-      const en = item.en?.trim();
-      const ru = item.ru?.trim();
+      const text =
+        item.instruction?.trim() ||
+        item.text?.trim() ||
+        (targetLang === 'en'
+          ? (item.en?.trim() || item.ru?.trim())
+          : (item.ru?.trim() || item.en?.trim())) ||
+        item.en?.trim() ||
+        item.ru?.trim();
       const ch = item.chapterTitle?.trim() || item.chapter_title?.trim();
 
-      if (en || ru || ch) {
+      if (text || ch) {
         updatedSteps[targetIdx] = {
           ...existing,
-          ...(en ? { en } : {}),
-          ...(ru ? { ru } : {}),
+          ...(text ? { en: text, ru: text } : {}),
           ...(ch ? { chapterTitle: ch } : {}),
         };
         appliedCount++;
@@ -319,12 +354,15 @@ export async function describeStepWithGeminiMicroCrop(params: {
   model?: string;
   screenshotBlob: Blob;
   step: GuideStep;
-}): Promise<{ en: string; ru: string; buttonLabel?: string }> {
+  targetLang?: 'en' | 'ru';
+}): Promise<{ en: string; ru: string; instruction: string; buttonLabel?: string }> {
   const { apiKey, screenshotBlob, step } = params;
   const model = params.model || DEFAULT_GEMINI_MODEL;
+  const targetLang = params.targetLang || 'en';
+  const isEn = targetLang === 'en';
 
   if (!apiKey || !apiKey.trim()) {
-    throw new Error('Укажите ключ Gemini API для использования авто-описания.');
+    throw new Error(isEn ? 'Provide Gemini API key in settings.' : 'Укажите ключ Gemini API для использования авто-описания.');
   }
 
   // 1. Cut micro-crop (~15-25 KB JPEG with red bounding box)
@@ -333,22 +371,34 @@ export async function describeStepWithGeminiMicroCrop(params: {
   // 2. Strip base64 data prefix
   const base64Data = cropDataUrl.replace(/^data:image\/[a-z]+;base64,/, '');
 
-  const promptText = `You are an expert technical writer and UI documentation specialist.
+  const promptText = isEn
+    ? `You are an expert technical writer and UI documentation specialist.
 Look at the attached micro-cropped screenshot snippet. The target interactive element is highlighted by a bright red rectangular outline.
 Action type for this step: "${step.act}".
 ${step.voiceDraft ? `Author voice draft / note: "${step.voiceDraft}".` : ''}
-${step.ru ? `Current Russian description: "${step.ru}".` : ''}
+${step.en || step.ru ? `Current description: "${step.en || step.ru}".` : ''}
 
 Instructions:
 1. Identify the exact label, text, or icon meaning of the button or UI element inside the red outline (buttonLabel).
-2. Formulate a short, natural step-by-step instruction in English ("en") and Russian ("ru").
-3. Wrap the identified UI element in <b>...</b> HTML tags (for example: "Click <b>+ New Pipeline</b>." / "Нажмите <b>+ New Pipeline</b>.").
-4. If the button text is in English in the screenshot, keep the exact English name inside <b>...</b> in both Russian and English instructions.
-5. Return strictly valid JSON with this exact structure:
+2. Formulate a short, natural step-by-step instruction in English with <b>...</b> HTML tags around the button name (for example: "Click <b>+ New Pipeline</b>.").
+3. Return strictly valid JSON with this exact structure:
 {
   "buttonLabel": "exact button name",
-  "en": "concise instruction in English with <b>...</b>",
-  "ru": "краткая инструкция на русском с <b>...</b>"
+  "instruction": "concise instruction in English with <b>...</b>"
+}`
+    : `Вы опытный технический писатель и составитель интерактивных руководств.
+Посмотрите на прикрепленный микро-кроп скриншота. Целевой интерактивный элемент выделен ярко-красной прямоугольной рамкой.
+Действие для этого шага: "${step.act}".
+${step.voiceDraft ? `Голосовая заметка автора: "${step.voiceDraft}".` : ''}
+${step.ru || step.en ? `Текущее описание: "${step.ru || step.en}".` : ''}
+
+Инструкции:
+1. Определите точное название, надпись или смысл иконки кнопки внутри красной рамки (buttonLabel).
+2. Сформулируйте краткую, естественную пошаговую инструкцию на русском языке с тегами <b>...</b> вокруг названия элемента (например: "Нажмите <b>+ New Pipeline</b>."). Если название кнопки на английском, сохраните его оригинальное написание внутри <b>...</b>.
+3. Верните СТРОГО валидный JSON следующей структуры:
+{
+  "buttonLabel": "точное название кнопки",
+  "instruction": "краткая инструкция на русском с <b>...</b>"
 }`;
 
   const requestBody = {
@@ -384,7 +434,7 @@ Instructions:
   });
 
   if (!res.ok) {
-    let errMsg = `Ошибка Gemini API (${res.status} ${res.statusText})`;
+    let errMsg = isEn ? `Gemini API error (${res.status} ${res.statusText})` : `Ошибка Gemini API (${res.status} ${res.statusText})`;
     try {
       const errJson = await res.json();
       if (errJson?.error?.message) {
@@ -399,7 +449,7 @@ Instructions:
   const data = await res.json();
   const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!rawText) {
-    throw new Error('Пустой ответ от модели Gemini API.');
+    throw new Error(isEn ? 'Gemini returned empty response.' : 'Пустой ответ от модели Gemini API.');
   }
 
   // Parse JSON response
@@ -409,22 +459,26 @@ Instructions:
     cleaned = codeBlockMatch[1].trim();
   }
 
-  let parsed: { en?: string; ru?: string; buttonLabel?: string };
+  let parsed: { en?: string; ru?: string; instruction?: string; buttonLabel?: string; button_label?: string };
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    throw new Error(`Не удалось распарсить JSON из ответа Gemini: ${rawText.substring(0, 100)}...`);
+    throw new Error(isEn ? `Failed to parse JSON from Gemini response: ${rawText.substring(0, 100)}...` : `Не удалось распарсить JSON из ответа Gemini: ${rawText.substring(0, 100)}...`);
   }
 
-  const en = parsed.en?.trim() || '';
-  const ru = parsed.ru?.trim() || '';
-  const buttonLabel = parsed.buttonLabel?.trim();
+  const instruction = (parsed.instruction || (isEn ? parsed.en : parsed.ru) || parsed.en || parsed.ru || '').trim();
+  const buttonLabel = (parsed.buttonLabel || parsed.button_label || '').trim();
 
-  if (!en && !ru) {
-    throw new Error('Модель не вернула текст для шага.');
+  if (!instruction) {
+    throw new Error(isEn ? 'Model did not return instruction.' : 'Модель не вернула текст для шага.');
   }
 
-  return { en, ru, buttonLabel };
+  return {
+    instruction,
+    en: instruction,
+    ru: instruction,
+    buttonLabel: buttonLabel || undefined,
+  };
 }
 
 /**
