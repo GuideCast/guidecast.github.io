@@ -16,10 +16,13 @@ export interface InteractiveBoxEditorProps {
   maskBoxes?: BoxRect[];
   onAddBlurBox?: (box: BoxRect) => void;
   onRemoveBlurBox?: (index: number) => void;
+  onUpdateBlurBox?: (index: number, box: BoxRect) => void;
   onAddGlobalBlurBox?: (box: BoxRect) => void;
   onRemoveGlobalBlurBox?: (index: number) => void;
+  onUpdateGlobalBlurBox?: (index: number, box: BoxRect) => void;
   onAddMaskBox?: (box: BoxRect) => void;
   onRemoveMaskBox?: (index: number) => void;
+  onUpdateMaskBox?: (index: number, box: BoxRect) => void;
 
   // Draw mode when dragging outside current box
   drawMode?: 'target' | 'blur' | 'globalBlur' | 'mask' | 'none';
@@ -67,6 +70,15 @@ type DragState =
       startPctY: number;
       currentPctX: number;
       currentPctY: number;
+    }
+  | {
+      type: 'move_blur';
+      blurType: 'blur' | 'globalBlur' | 'mask';
+      index: number;
+      startClientX: number;
+      startClientY: number;
+      startBox: BoxRect;
+      currentBox: BoxRect;
     };
 
 /**
@@ -111,10 +123,13 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
   maskBoxes,
   onAddBlurBox,
   onRemoveBlurBox,
+  onUpdateBlurBox,
   onAddGlobalBlurBox,
   onRemoveGlobalBlurBox,
+  onUpdateGlobalBlurBox,
   onAddMaskBox,
   onRemoveMaskBox,
+  onUpdateMaskBox,
   drawMode = 'target',
   onDrawComplete,
   stepNumber,
@@ -160,29 +175,12 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
     }
   }, [cursorPos, box, dragState.type]);
 
-  // Handle image load to get natural dimensions
-  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = e.currentTarget;
-    if (img.naturalWidth && img.naturalHeight) {
-      setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
-    }
-  };
-
-  useEffect(() => {
-    if (imageRef.current && imageRef.current.complete && imageRef.current.naturalWidth) {
-      setNaturalSize({
-        width: imageRef.current.naturalWidth,
-        height: imageRef.current.naturalHeight,
-      });
-    }
-  }, [imageUrl]);
-
   // Compute rendered image bounds within container (accounting for letterbox/pillarbox)
   const updateRenderRect = useCallback(() => {
     if (!containerRef.current) return;
     const container = containerRef.current;
-    const cWidth = container.clientWidth;
-    const cHeight = container.clientHeight;
+    const cWidth = container.clientWidth || container.getBoundingClientRect().width;
+    const cHeight = container.clientHeight || container.getBoundingClientRect().height;
     if (!cWidth || !cHeight) return;
 
     const natW = naturalSize.width || imageRef.current?.naturalWidth || 0;
@@ -216,17 +214,43 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
     setRenderRect({ left, top, width: w, height: h });
   }, [naturalSize]);
 
+  // Handle image load to get natural dimensions
+  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    if (img.naturalWidth && img.naturalHeight) {
+      setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
+      updateRenderRect();
+      requestAnimationFrame(() => {
+        updateRenderRect();
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (imageRef.current && imageRef.current.complete && imageRef.current.naturalWidth) {
+      setNaturalSize({
+        width: imageRef.current.naturalWidth,
+        height: imageRef.current.naturalHeight,
+      });
+      updateRenderRect();
+      requestAnimationFrame(() => {
+        updateRenderRect();
+      });
+    }
+  }, [imageUrl, updateRenderRect]);
+
   useEffect(() => {
     updateRenderRect();
     if (!containerRef.current) return;
     const ro = new ResizeObserver(() => {
       updateRenderRect();
+      requestAnimationFrame(() => updateRenderRect());
     });
     ro.observe(containerRef.current);
     return () => ro.disconnect();
   }, [updateRenderRect]);
 
-  // --- Handlers: Move Box ---
+  // --- Handlers: Move Target Box ---
   const handleBoxMovePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (readOnly || !activeBox) return;
     e.stopPropagation();
@@ -419,6 +443,66 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
     }
   };
 
+  // --- Handlers: Move Blur / Mask Boxes ---
+  const handleBlurPointerDown = (
+    e: React.PointerEvent<HTMLDivElement>,
+    blurType: 'blur' | 'globalBlur' | 'mask',
+    index: number,
+    b: BoxRect
+  ) => {
+    if (readOnly) return;
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+
+    setDragState({
+      type: 'move_blur',
+      blurType,
+      index,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startBox: { ...b },
+      currentBox: { ...b },
+    });
+  };
+
+  const handleBlurPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragState.type !== 'move_blur' || renderRect.width === 0 || renderRect.height === 0) return;
+    e.stopPropagation();
+
+    const deltaPctX = ((e.clientX - dragState.startClientX) / renderRect.width) * 100;
+    const deltaPctY = ((e.clientY - dragState.startClientY) / renderRect.height) * 100;
+
+    let newX = Math.round((dragState.startBox.x + deltaPctX) * 10) / 10;
+    let newY = Math.round((dragState.startBox.y + deltaPctY) * 10) / 10;
+
+    newX = Math.max(0, Math.min(100 - dragState.startBox.w, newX));
+    newY = Math.max(0, Math.min(100 - dragState.startBox.h, newY));
+
+    const updatedBox = { ...dragState.startBox, x: newX, y: newY };
+    setDragState({
+      ...dragState,
+      currentBox: updatedBox,
+    });
+  };
+
+  const handleBlurPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragState.type !== 'move_blur') return;
+    e.stopPropagation();
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    const { blurType, index, currentBox } = dragState;
+    setDragState({ type: 'none' });
+
+    if (blurType === 'blur') {
+      onUpdateBlurBox?.(index, currentBox);
+    } else if (blurType === 'globalBlur') {
+      onUpdateGlobalBlurBox?.(index, currentBox);
+    } else if (blurType === 'mask') {
+      onUpdateMaskBox?.(index, currentBox);
+    }
+  };
+
   // --- Handlers: Drag Cursor Pointer ---
   const handleCursorPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (readOnly) return;
@@ -514,10 +598,36 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
     const { startPctX, startPctY, currentPctX, currentPctY } = dragState;
     setDragState({ type: 'none' });
 
-    let finalBox: BoxRect;
     const w = Math.abs(currentPctX - startPctX);
     const h = Math.abs(currentPctY - startPctY);
 
+    if (drawMode === 'blur' || drawMode === 'globalBlur' || drawMode === 'mask') {
+      // Urgent fix: Do NOT create blur/mask box on single click / minimal drag!
+      // Must be an intentionally dragged rectangular area.
+      if (w < 1.5 || h < 1.5) {
+        return;
+      }
+      const finalBox: BoxRect = {
+        x: Math.round(Math.min(startPctX, currentPctX) * 10) / 10,
+        y: Math.round(Math.min(startPctY, currentPctY) * 10) / 10,
+        w: Math.max(1, Math.round(w * 10) / 10),
+        h: Math.max(1, Math.round(h * 10) / 10),
+      };
+      if (drawMode === 'blur') {
+        onAddBlurBox?.(finalBox);
+        onDrawComplete?.(finalBox, 'blur');
+      } else if (drawMode === 'globalBlur') {
+        onAddGlobalBlurBox?.(finalBox);
+        onDrawComplete?.(finalBox, 'globalBlur');
+      } else if (drawMode === 'mask') {
+        onAddMaskBox?.(finalBox);
+        onDrawComplete?.(finalBox, 'mask');
+      }
+      return;
+    }
+
+    // Default target highlight box
+    let finalBox: BoxRect;
     if (w < 1.5 && h < 1.5) {
       // Single click: default 12% x 7% box centered around click
       const bw = 12;
@@ -537,24 +647,13 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
       };
     }
 
-    if (drawMode === 'blur') {
-      onAddBlurBox?.(finalBox);
-      onDrawComplete?.(finalBox, 'blur');
-    } else if (drawMode === 'globalBlur') {
-      onAddGlobalBlurBox?.(finalBox);
-      onDrawComplete?.(finalBox, 'globalBlur');
-    } else if (drawMode === 'mask') {
-      onAddMaskBox?.(finalBox);
-      onDrawComplete?.(finalBox, 'mask');
-    } else {
-      const defaultCursor = computeDefaultCursorPos(finalBox);
-      setActiveBox(finalBox);
-      setActiveCursorPos(defaultCursor);
-      onChangeBoxAndCursor?.(finalBox, defaultCursor);
-      onChangeBox?.(finalBox);
-      onChangeCursor?.(defaultCursor);
-      onDrawComplete?.(finalBox, 'target');
-    }
+    const defaultCursor = computeDefaultCursorPos(finalBox);
+    setActiveBox(finalBox);
+    setActiveCursorPos(defaultCursor);
+    onChangeBoxAndCursor?.(finalBox, defaultCursor);
+    onChangeBox?.(finalBox);
+    onChangeCursor?.(defaultCursor);
+    onDrawComplete?.(finalBox, 'target');
   };
 
   const cursorTooltip =
@@ -596,95 +695,136 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
         }}
       >
         {/* Global Blur Boxes */}
-        {globalBlurBoxes?.map((b, idx) => (
-          <div
-            key={`gblur-${idx}`}
-            className="absolute border border-purple-500/70 bg-purple-500/20 backdrop-blur-md rounded select-none z-10"
-            style={{
-              left: `${b.x}%`,
-              top: `${b.y}%`,
-              width: `${b.w}%`,
-              height: `${b.h}%`,
-            }}
-          >
-            <div className="absolute top-0.5 left-1 text-[9px] font-bold text-purple-300 pointer-events-none">
-              GLOBAL BLUR
+        {globalBlurBoxes?.map((b, idx) => {
+          const isDraggingThis =
+            dragState.type === 'move_blur' && dragState.blurType === 'globalBlur' && dragState.index === idx;
+          const currentB = isDraggingThis ? dragState.currentBox : b;
+          return (
+            <div
+              key={`gblur-${idx}`}
+              onPointerDown={(e) => handleBlurPointerDown(e, 'globalBlur', idx, b)}
+              onPointerMove={handleBlurPointerMove}
+              onPointerUp={handleBlurPointerUp}
+              className={`absolute border border-purple-500/70 bg-purple-500/20 backdrop-blur-md rounded select-none z-10 ${
+                readOnly ? 'cursor-default' : 'cursor-move'
+              }`}
+              style={{
+                left: `${currentB.x}%`,
+                top: `${currentB.y}%`,
+                width: `${currentB.w}%`,
+                height: `${currentB.h}%`,
+              }}
+              title={uiLang === 'ru' ? 'Тяните для перемещения сквозного блюра' : 'Drag to move global blur'}
+            >
+              <div className="absolute top-0.5 left-1 text-[9px] font-bold text-purple-300 pointer-events-none select-none">
+                GLOBAL BLUR
+              </div>
+              {onRemoveGlobalBlurBox && !readOnly && (
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveGlobalBlurBox(idx);
+                  }}
+                  className="absolute -top-2.5 -right-2.5 w-5 h-5 bg-rose-600 hover:bg-rose-500 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md pointer-events-auto z-50 cursor-pointer transition hover:scale-110 active:scale-95"
+                  title={uiLang === 'ru' ? 'Удалить сквозной блюр' : 'Remove global blur'}
+                >
+                  ×
+                </button>
+              )}
             </div>
-            {onRemoveGlobalBlurBox && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemoveGlobalBlurBox(idx);
-                }}
-                className="absolute -top-2 -right-2 w-4 h-4 bg-rose-600 hover:bg-rose-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold shadow pointer-events-auto"
-                title={uiLang === 'ru' ? 'Удалить сквозной блюр' : 'Remove global blur'}
-              >
-                ×
-              </button>
-            )}
-          </div>
-        ))}
+          );
+        })}
 
         {/* Screenshot Specific Blur Boxes */}
-        {blurBoxes?.map((b, idx) => (
-          <div
-            key={`blur-${idx}`}
-            className="absolute border border-amber-500/70 bg-amber-500/20 backdrop-blur-md rounded select-none z-10"
-            style={{
-              left: `${b.x}%`,
-              top: `${b.y}%`,
-              width: `${b.w}%`,
-              height: `${b.h}%`,
-            }}
-          >
-            <div className="absolute top-0.5 left-1 text-[9px] font-bold text-amber-300 pointer-events-none">
-              BLUR
+        {blurBoxes?.map((b, idx) => {
+          const isDraggingThis =
+            dragState.type === 'move_blur' && dragState.blurType === 'blur' && dragState.index === idx;
+          const currentB = isDraggingThis ? dragState.currentBox : b;
+          return (
+            <div
+              key={`blur-${idx}`}
+              onPointerDown={(e) => handleBlurPointerDown(e, 'blur', idx, b)}
+              onPointerMove={handleBlurPointerMove}
+              onPointerUp={handleBlurPointerUp}
+              className={`absolute border border-amber-500/70 bg-amber-500/20 backdrop-blur-md rounded select-none z-10 ${
+                readOnly ? 'cursor-default' : 'cursor-move'
+              }`}
+              style={{
+                left: `${currentB.x}%`,
+                top: `${currentB.y}%`,
+                width: `${currentB.w}%`,
+                height: `${currentB.h}%`,
+              }}
+              title={uiLang === 'ru' ? 'Тяните для перемещения зоны блюра' : 'Drag to move blur area'}
+            >
+              <div className="absolute top-0.5 left-1 text-[9px] font-bold text-amber-300 pointer-events-none select-none">
+                BLUR
+              </div>
+              {onRemoveBlurBox && !readOnly && (
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveBlurBox(idx);
+                  }}
+                  className="absolute -top-2.5 -right-2.5 w-5 h-5 bg-rose-600 hover:bg-rose-500 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md pointer-events-auto z-50 cursor-pointer transition hover:scale-110 active:scale-95"
+                  title={uiLang === 'ru' ? 'Удалить зону блюра' : 'Remove blur'}
+                >
+                  ×
+                </button>
+              )}
             </div>
-            {onRemoveBlurBox && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemoveBlurBox(idx);
-                }}
-                className="absolute -top-2 -right-2 w-4 h-4 bg-rose-600 hover:bg-rose-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold shadow pointer-events-auto"
-                title="Remove blur"
-              >
-                ×
-              </button>
-            )}
-          </div>
-        ))}
+          );
+        })}
 
         {/* Mask Boxes */}
-        {maskBoxes?.map((b, idx) => (
-          <div
-            key={`mask-${idx}`}
-            className="absolute border border-slate-700 bg-slate-950 rounded select-none z-10"
-            style={{
-              left: `${b.x}%`,
-              top: `${b.y}%`,
-              width: `${b.w}%`,
-              height: `${b.h}%`,
-            }}
-          >
-            <div className="absolute top-0.5 left-1 text-[9px] font-bold text-slate-400 pointer-events-none">
-              MASK
+        {maskBoxes?.map((b, idx) => {
+          const isDraggingThis =
+            dragState.type === 'move_blur' && dragState.blurType === 'mask' && dragState.index === idx;
+          const currentB = isDraggingThis ? dragState.currentBox : b;
+          return (
+            <div
+              key={`mask-${idx}`}
+              onPointerDown={(e) => handleBlurPointerDown(e, 'mask', idx, b)}
+              onPointerMove={handleBlurPointerMove}
+              onPointerUp={handleBlurPointerUp}
+              className={`absolute border border-slate-700 bg-slate-950 rounded select-none z-10 ${
+                readOnly ? 'cursor-default' : 'cursor-move'
+              }`}
+              style={{
+                left: `${currentB.x}%`,
+                top: `${currentB.y}%`,
+                width: `${currentB.w}%`,
+                height: `${currentB.h}%`,
+              }}
+              title={uiLang === 'ru' ? 'Тяните для перемещения маски' : 'Drag to move mask'}
+            >
+              <div className="absolute top-0.5 left-1 text-[9px] font-bold text-slate-400 pointer-events-none select-none">
+                MASK
+              </div>
+              {onRemoveMaskBox && !readOnly && (
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveMaskBox(idx);
+                  }}
+                  className="absolute -top-2.5 -right-2.5 w-5 h-5 bg-rose-600 hover:bg-rose-500 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md pointer-events-auto z-50 cursor-pointer transition hover:scale-110 active:scale-95"
+                  title={uiLang === 'ru' ? 'Удалить маску' : 'Remove mask'}
+                >
+                  ×
+                </button>
+              )}
             </div>
-            {onRemoveMaskBox && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemoveMaskBox(idx);
-                }}
-                className="absolute -top-2 -right-2 w-4 h-4 bg-rose-600 hover:bg-rose-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold shadow pointer-events-auto"
-                title="Remove mask"
-              >
-                ×
-              </button>
-            )}
-          </div>
-        ))}
+          );
+        })}
 
         {/* Primary Red Box */}
         {activeBox && (

@@ -1,4 +1,5 @@
 import type {
+  ActionType,
   BoxRect,
   GuideProject,
   GuideStep,
@@ -15,6 +16,127 @@ import {
   getImageDimensions,
 } from '../db/database';
 import { renderProcessedScreenshot } from './canvasRenderer';
+
+/**
+ * Computes default cursor position slightly inside the bottom-right corner of the target box.
+ */
+function computeDefaultCursorPos(box: BoxRect): { x: number; y: number } {
+  return {
+    x: Math.min(100, Math.max(0, Math.round((box.x + box.w * 0.96) * 10) / 10)),
+    y: Math.min(100, Math.max(0, Math.round((box.y + box.h * 0.92) * 10) / 10)),
+  };
+}
+
+/**
+ * Convert data:image/...;base64,... into a native binary Blob.
+ */
+export function dataUrlToBlob(dataUrl: string): Blob {
+  const commaIdx = dataUrl.indexOf(',');
+  if (commaIdx === -1) {
+    return new Blob([dataUrl], { type: 'image/png' });
+  }
+  const header = dataUrl.slice(0, commaIdx);
+  const base64Data = dataUrl.slice(commaIdx + 1).trim().replace(/\s/g, '');
+  const mimeMatch = header.match(/data:([^;]+)/);
+  const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+
+  const binaryStr = atob(base64Data);
+  const len = binaryStr.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryStr.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mime });
+}
+
+/**
+ * Create a simple placeholder fallback image blob when a screenshot is missing.
+ */
+function createPlaceholderBlob(label: string): Blob {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1600;
+  canvas.height = 900;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(0, 0, 1600, 900);
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.fillText(`Screenshot: ${label}`, 80, 200);
+  }
+  return dataUrlToBlob(canvas.toDataURL('image/png'));
+}
+
+/**
+ * Safely extracts a JS object or array assigned to a variable in HTML/JS source.
+ * Handles const/let/var/window.VAR = ..., /* comments *\/, string literals, and nested brackets.
+ */
+function extractJsStructure(html: string, varName: string): any {
+  const regex = new RegExp(
+    `(?:(?:const|let|var|window\\.)\\s+${varName}\\s*=\\s*(?:\\/\\*[\\s\\S]*?\\*\\/)?\\s*)([\\{\\[])`
+  );
+  const match = regex.exec(html);
+  if (!match) return null;
+
+  const startChar = match[1];
+  const endChar = startChar === '[' ? ']' : '}';
+  const startIndex = match.index + match[0].length - 1;
+
+  let depth = 0;
+  let inString: string | null = null;
+  let escape = false;
+
+  for (let i = startIndex; i < html.length; i++) {
+    const char = html[i];
+
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (char === '\\') {
+        escape = true;
+      } else if (char === inString) {
+        inString = null;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === '`') {
+      inString = char;
+      continue;
+    }
+
+    // Ignore single-line comments // ...
+    if (char === '/' && html[i + 1] === '/') {
+      const nextNl = html.indexOf('\n', i + 2);
+      i = nextNl === -1 ? html.length : nextNl;
+      continue;
+    }
+
+    // Ignore multi-line comments /* ... */
+    if (char === '/' && html[i + 1] === '*') {
+      const nextEnd = html.indexOf('*/', i + 2);
+      i = nextEnd === -1 ? html.length : nextEnd + 1;
+      continue;
+    }
+
+    if (char === startChar) {
+      depth++;
+    } else if (char === endChar) {
+      depth--;
+      if (depth === 0) {
+        const jsonStr = html.slice(startIndex, i + 1);
+        try {
+          return JSON.parse(jsonStr);
+        } catch {
+          // Fallback to evaluating JS literal safely
+          return new Function(`"use strict"; return (${jsonStr});`)();
+        }
+      }
+    }
+  }
+
+  return null;
+}
 
 /**
  * Convert legacy pixel coordinates [x0, y0, x1, y1] (based on dw) into percentages BoxRect.
@@ -267,19 +389,35 @@ export function exportToLegacyJson(
 export async function exportStandaloneHtml(
   project: GuideProject,
   screenshots: ScreenshotAsset[],
-  options: { publicBlur: boolean; interactiveMode?: boolean } = { publicBlur: true }
+  options: {
+    publicBlur: boolean;
+    interactiveMode?: boolean;
+    fromStep?: number;
+    toStep?: number;
+  } = { publicBlur: true }
 ): Promise<string> {
   const assetMap = new Map<string, ScreenshotAsset>();
   for (const a of screenshots) {
     assetMap.set(a.id, a);
   }
 
+  // Determine active slice of steps if fromStep / toStep are given
+  let activeSteps = project.steps;
+  const isSliced = options.fromStep !== undefined || options.toStep !== undefined;
+  if (isSliced && project.steps.length > 0) {
+    const minStep = Math.min(options.fromStep || 1, options.toStep || project.steps.length);
+    const maxStep = Math.max(options.fromStep || 1, options.toStep || project.steps.length);
+    const fromIdx = Math.max(0, Math.min(project.steps.length - 1, minStep - 1));
+    const toIdx = Math.max(fromIdx, Math.min(project.steps.length - 1, maxStep - 1));
+    activeSteps = project.steps.slice(fromIdx, toIdx + 1);
+  }
+
   // Render screenshots to base64 images dict without duplication
   const images: Record<string, string> = {};
 
   for (const asset of screenshots) {
-    // Only render if referenced by at least one step
-    const stepsUsingThis = project.steps.filter((s) => s.screenshotId === asset.id);
+    // Only render if referenced by at least one step in activeSteps
+    const stepsUsingThis = activeSteps.filter((s) => s.screenshotId === asset.id);
     if (stepsUsingThis.length > 0) {
       const base64 = await renderProcessedScreenshot(
         asset,
@@ -293,7 +431,7 @@ export async function exportStandaloneHtml(
   }
 
   // Prepare steps
-  const steps: StandaloneStep[] = project.steps.map((st) => {
+  const steps: StandaloneStep[] = activeSteps.map((st) => {
     const asset = assetMap.get(st.screenshotId);
     const textEn = st.en || st.ru || '';
     const textRu = st.ru || st.en || '';
@@ -318,8 +456,11 @@ export async function exportStandaloneHtml(
 
   const isSingleLang = steps.length > 0 && steps.every((s) => s.en === s.ru);
 
-  const titleEn = project.titleEn || project.titleRu || project.pageTitle || 'Interactive Guide';
-  const titleRu = project.titleRu || project.titleEn || project.pageTitle || 'Интерактивное руководство';
+  const sliceSuffixEn = isSliced ? ` (Steps ${options.fromStep || 1}–${options.toStep || project.steps.length})` : '';
+  const sliceSuffixRu = isSliced ? ` (Шаги ${options.fromStep || 1}–${options.toStep || project.steps.length})` : '';
+
+  const titleEn = (project.titleEn || project.titleRu || project.pageTitle || 'Interactive Guide') + sliceSuffixEn;
+  const titleRu = (project.titleRu || project.titleEn || project.pageTitle || 'Интерактивное руководство') + sliceSuffixRu;
   const subEn = project.subEn || project.subRu || 'Step-by-step instructions';
   const subRu = project.subRu || project.subEn || 'Пошаговые инструкции';
 
@@ -334,7 +475,7 @@ export async function exportStandaloneHtml(
   const stepsJson = JSON.stringify(steps);
   const imagesJson = JSON.stringify(images);
   const metaJson = JSON.stringify(meta);
-  const pageTitle = (project.defaultLang === 'ru' ? titleRu : titleEn) || project.pageTitle || 'Interactive Step Guide';
+  const pageTitle = ((project.defaultLang === 'ru' ? titleRu : titleEn) || project.pageTitle || 'Interactive Step Guide') + (isSliced ? sliceSuffixEn : '');
 
   return `<!doctype html>
 <html lang="${project.defaultLang || (isSingleLang ? 'en' : 'ru')}">
@@ -347,9 +488,6 @@ export async function exportStandaloneHtml(
   --bg:#f4f5f7; --card:#ffffff; --ink:#1b1f24; --muted:#5b6470; --line:#dde1e6;
   --accent:#0f7b6c; --accent-ink:#ffffff; --hl:#e5322d; --chip:#eef1f4;
   --success:#10b981;
-}
-@media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]){--bg:#14171a;--card:#1d2125;--ink:#eceff2;--muted:#9aa4af;--line:#2c3238;--accent:#2bb5a0;--accent-ink:#06201b;--hl:#ff5a54;--chip:#272d33}
 }
 :root[data-theme="dark"]{--bg:#14171a;--card:#1d2125;--ink:#eceff2;--muted:#9aa4af;--line:#2c3238;--accent:#2bb5a0;--accent-ink:#06201b;--hl:#ff5a54;--chip:#272d33}
 *{box-sizing:border-box}
@@ -744,4 +882,220 @@ render();
 </script>
 </body>
 </html>`;
+}
+
+/**
+ * Import a standalone HTML guide file (created by this app or build_guide.py / template.html)
+ * and reconstruct it into a full editable GuideProject with screenshots in IndexedDB.
+ */
+export async function importFromStandaloneHtml(file: File): Promise<GuideProject> {
+  const html = await file.text();
+
+  // Extract page title from <title>...</title>
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  let extractedTitle = titleMatch ? titleMatch[1].replace(/<[^>]*>/g, '').trim() : '';
+  if (extractedTitle.includes('/*PAGETITLE*/')) {
+    extractedTitle = '';
+  }
+
+  // Extract STEPS, IMAGES, META
+  const rawSteps = extractJsStructure(html, 'STEPS');
+  if (!Array.isArray(rawSteps) || rawSteps.length === 0) {
+    throw new Error('No STEPS array found in the HTML file, or the steps list is empty.');
+  }
+
+  const rawImages = extractJsStructure(html, 'IMAGES') || {};
+  const rawMeta = extractJsStructure(html, 'META') || {};
+
+  const projectId = generateId();
+  const assetMap = new Map<string, ScreenshotAsset>();
+
+  // Collect all image keys referenced in STEPS or defined in IMAGES
+  const imageKeys = new Set<string>();
+  Object.keys(rawImages).forEach((k) => imageKeys.add(k));
+  rawSteps.forEach((st: any) => {
+    if (st && st.img) imageKeys.add(String(st.img));
+  });
+
+  if (imageKeys.size === 0) {
+    imageKeys.add('1.png');
+  }
+
+  // Convert each image to Blob and save into IndexedDB
+  for (const imgName of imageKeys) {
+    const dataUrl = rawImages[imgName];
+    let blob: Blob;
+
+    if (typeof dataUrl === 'string' && dataUrl.startsWith('data:')) {
+      try {
+        blob = dataUrlToBlob(dataUrl);
+      } catch (err) {
+        console.warn(`Failed to convert dataUrl for ${imgName}, creating placeholder:`, err);
+        blob = createPlaceholderBlob(imgName);
+      }
+    } else {
+      blob = createPlaceholderBlob(imgName);
+    }
+
+    const asset = await addScreenshot(projectId, blob, imgName);
+    assetMap.set(imgName.toLowerCase(), asset);
+  }
+
+  const defaultAsset = assetMap.values().next().value;
+
+  // Reconstruct guide steps
+  const steps: GuideStep[] = rawSteps.map((s: any) => {
+    const asset = assetMap.get(String(s.img || '').toLowerCase()) || defaultAsset;
+
+    let box: BoxRect = { x: 30, y: 30, w: 25, h: 12 };
+    if (Array.isArray(s.box) && s.box.length >= 4) {
+      box = {
+        x: Math.max(0, Math.min(100, Number(s.box[0]) || 0)),
+        y: Math.max(0, Math.min(100, Number(s.box[1]) || 0)),
+        w: Math.max(0.1, Math.min(100, Number(s.box[2]) || 10)),
+        h: Math.max(0.1, Math.min(100, Number(s.box[3]) || 10)),
+      };
+    } else if (s.box && typeof s.box === 'object') {
+      box = {
+        x: Math.max(0, Math.min(100, Number(s.box.x) || 0)),
+        y: Math.max(0, Math.min(100, Number(s.box.y) || 0)),
+        w: Math.max(0.1, Math.min(100, Number(s.box.w) || 10)),
+        h: Math.max(0.1, Math.min(100, Number(s.box.h) || 10)),
+      };
+    }
+
+    let cursorPos: { x: number; y: number };
+    if (Array.isArray(s.cursorPos) && s.cursorPos.length >= 2) {
+      cursorPos = {
+        x: Math.max(0, Math.min(100, Number(s.cursorPos[0]) || 0)),
+        y: Math.max(0, Math.min(100, Number(s.cursorPos[1]) || 0)),
+      };
+    } else if (s.cursorPos && typeof s.cursorPos === 'object') {
+      cursorPos = {
+        x: Math.max(0, Math.min(100, Number(s.cursorPos.x) || 0)),
+        y: Math.max(0, Math.min(100, Number(s.cursorPos.y) || 0)),
+      };
+    } else {
+      cursorPos = computeDefaultCursorPos(box);
+    }
+
+    const enText = s.en || s.ru || '';
+    const ruText = s.ru || s.en || '';
+
+    return {
+      id: generateId(),
+      screenshotId: asset?.id || '',
+      act: (s.act as ActionType) || 'click',
+      box,
+      cursorPos,
+      chapterTitle: s.chapterTitle || s.chapter || s.chapter_title,
+      en: enText,
+      ru: ruText,
+      voiceDraft: s.voiceDraft || s.voice_draft,
+      keepBlur: Boolean(s.keepBlur || s.keep_blur),
+    };
+  });
+
+  const baseFileName = file.name.replace(/\.[^/.]+$/, '');
+  const titleEn = rawMeta.title_en || rawMeta.titleEn || extractedTitle || baseFileName || 'Interactive Step Guide';
+  const titleRu = rawMeta.title_ru || rawMeta.titleRu || rawMeta.title_en || extractedTitle || baseFileName || 'Интерактивное руководство';
+  const subEn = rawMeta.sub_en || rawMeta.subEn || 'Step-by-step interactive instructions';
+  const subRu = rawMeta.sub_ru || rawMeta.subRu || 'Пошаговые интерактивные инструкции';
+  const pageTitle = extractedTitle || (rawMeta.default_lang === 'ru' ? titleRu : titleEn);
+  const defaultLang = (rawMeta.default_lang === 'ru' || rawMeta.default_lang === 'en') ? rawMeta.default_lang : 'en';
+
+  const project: GuideProject = {
+    id: projectId,
+    pageTitle,
+    titleEn,
+    titleRu,
+    subEn,
+    subRu,
+    defaultLang,
+    globalBlurBoxes: [],
+    steps,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+
+  await db.projects.add(project);
+  return project;
+}
+
+/**
+ * Creates a new independent sub-project by slicing a range of steps (fromStepNumber to toStepNumber, 1-based)
+ * from an existing guide. Clones only the screenshots used by the selected steps into IndexedDB.
+ */
+export async function createSubProjectFromRange(
+  project: GuideProject,
+  screenshots: ScreenshotAsset[],
+  fromStepNumber: number,
+  toStepNumber: number,
+  customTitle?: string
+): Promise<GuideProject> {
+  const total = project.steps.length;
+  if (total === 0) {
+    throw new Error('Project has no steps to split.');
+  }
+
+  const minStep = Math.min(fromStepNumber, toStepNumber);
+  const maxStep = Math.max(fromStepNumber, toStepNumber);
+  const fromIdx = Math.max(0, Math.min(total - 1, minStep - 1));
+  const toIdx = Math.max(fromIdx, Math.min(total - 1, maxStep - 1));
+
+  const slicedRawSteps = project.steps.slice(fromIdx, toIdx + 1);
+  const subProjectId = generateId();
+
+  // Find all screenshots used by these steps and clone them into the new project
+  const usedScreenshotIds = new Set(slicedRawSteps.map((s) => s.screenshotId));
+  const oldIdToNewId = new Map<string, string>();
+
+  for (const oldId of usedScreenshotIds) {
+    const orig = screenshots.find((a) => a.id === oldId);
+    if (orig) {
+      const clonedAsset: ScreenshotAsset = {
+        id: generateId(),
+        projectId: subProjectId,
+        filename: orig.filename,
+        blob: orig.blob,
+        width: orig.width,
+        height: orig.height,
+        blurBoxes: (orig.blurBoxes || []).map((b) => ({ ...b })),
+        maskBoxes: (orig.maskBoxes || []).map((b) => ({ ...b })),
+      };
+      await db.screenshots.add(clonedAsset);
+      oldIdToNewId.set(oldId, clonedAsset.id);
+    }
+  }
+
+  // Clone steps with updated screenshot IDs and new IDs
+  const newSteps: GuideStep[] = slicedRawSteps.map((s) => ({
+    ...s,
+    id: generateId(),
+    screenshotId: oldIdToNewId.get(s.screenshotId) || s.screenshotId,
+    box: { ...s.box },
+    cursorPos: s.cursorPos ? { ...s.cursorPos } : undefined,
+  }));
+
+  const stepRangeStr = `${fromIdx + 1}–${toIdx + 1}`;
+  const titleEn = customTitle?.trim() || `${project.titleEn || project.titleRu} (Steps ${stepRangeStr})`;
+  const titleRu = customTitle?.trim() || `${project.titleRu || project.titleEn} (Шаги ${stepRangeStr})`;
+  const pageTitle = customTitle?.trim() || `${project.pageTitle} (Steps ${stepRangeStr})`;
+
+  const subProject: GuideProject = {
+    id: subProjectId,
+    pageTitle,
+    titleEn,
+    titleRu,
+    subEn: project.subEn,
+    subRu: project.subRu,
+    defaultLang: project.defaultLang,
+    globalBlurBoxes: (project.globalBlurBoxes || []).map((b) => ({ ...b })),
+    steps: newSteps,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+
+  await db.projects.add(subProject);
+  return subProject;
 }

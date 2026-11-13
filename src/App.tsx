@@ -13,6 +13,8 @@ import {
   Sparkles,
   ChevronUp,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Sun,
   Moon,
   FileCode,
@@ -22,6 +24,7 @@ import {
   Square,
   Wand2,
   RefreshCw,
+  Scissors,
 } from 'lucide-react';
 
 import type { ActionType, BoxRect, GuideProject, GuideStep, ScreenshotAsset } from './types/guide';
@@ -42,6 +45,8 @@ import {
   exportStandaloneHtml,
   exportToLegacyJson,
   importFromLegacyFolder,
+  importFromStandaloneHtml,
+  createSubProjectFromRange,
 } from './services/importerExporter';
 import { LiveCaptureWorkspace } from './components/capture/LiveCaptureWorkspace';
 import {
@@ -65,6 +70,7 @@ import {
 import {
   VoiceDictationController,
   isSpeechRecognitionSupported,
+  formatActionInstruction,
   type ParsedVoiceStep,
 } from './services/speechService';
 
@@ -81,21 +87,37 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('editor');
   const [selectedStepIndex, setSelectedStepIndex] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(true);
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('gct_theme') === 'dark';
+    } catch {
+      return false;
+    }
+  });
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isAiModalOpen, setIsAiModalOpen] = useState<boolean>(false);
 
-  // Folder import input ref
+  // Folder & HTML import input refs
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const htmlInputRef = useRef<HTMLInputElement>(null);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
+
+  // Split long guide into lessons (range slicer)
+  const [sliceFromStep, setSliceFromStep] = useState<number>(1);
+  const [sliceToStep, setSliceToStep] = useState<number>(1);
+  const [sliceLessonTitle, setSliceLessonTitle] = useState<string>('');
+
+  // Sync range slicer whenever active project steps change
+  useEffect(() => {
+    if (activeProject && activeProject.steps.length > 0) {
+      setSliceFromStep(1);
+      setSliceToStep(activeProject.steps.length);
+    }
+  }, [activeProject?.id, activeProject?.steps.length]);
 
   // Load project list on mount
   useEffect(() => {
     loadProjects();
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      setIsDarkMode(true);
-      document.documentElement.classList.add('dark');
-    }
   }, []);
 
   // Sync dark mode class
@@ -106,6 +128,15 @@ export default function App() {
       document.documentElement.classList.remove('dark');
     }
   }, [isDarkMode]);
+
+  // Guard selectedStepIndex bounds whenever project or steps change
+  useEffect(() => {
+    if (activeProject && activeProject.steps.length > 0) {
+      if (selectedStepIndex >= activeProject.steps.length || selectedStepIndex < 0) {
+        setSelectedStepIndex(activeProject.steps.length - 1);
+      }
+    }
+  }, [activeProject, selectedStepIndex]);
 
   // Load active project and its screenshots whenever activeProjectId changes
   useEffect(() => {
@@ -286,6 +317,34 @@ export default function App() {
     }
   }
 
+  // Handle Standalone HTML Import (.html / .htm)
+  async function handleHtmlSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsLoading(true);
+      const imported = await importFromStandaloneHtml(file);
+      await loadProjects();
+      setActiveProjectId(imported.id);
+      setActiveTab('editor');
+      showStatus(
+        uiLang === 'en'
+          ? `Imported HTML guide "${imported.titleEn || imported.titleRu}" (${imported.steps.length} steps)`
+          : `Импортирован HTML-гайд "${imported.titleRu || imported.titleEn}" (${imported.steps.length} шагов)`
+      );
+    } catch (err: unknown) {
+      console.error('HTML import error:', err);
+      showStatus(
+        uiLang === 'en'
+          ? `HTML import error: ${err instanceof Error ? err.message : String(err)}`
+          : `Ошибка импорта HTML: ${err instanceof Error ? err.message : String(err)}`
+      );
+    } finally {
+      setIsLoading(false);
+      if (htmlInputRef.current) htmlInputRef.current.value = '';
+    }
+  }
+
   // Add Screenshots from disk
   async function handleScreenshotsUploaded(e: React.ChangeEvent<HTMLInputElement>) {
     if (!activeProject || !e.target.files) return;
@@ -433,6 +492,81 @@ export default function App() {
     }
   }
 
+  // Export range of steps as standalone HTML
+  async function handleExportRangeHtml() {
+    if (!activeProject || activeProject.steps.length === 0) return;
+    try {
+      setIsLoading(true);
+      const minStep = Math.min(sliceFromStep, sliceToStep);
+      const maxStep = Math.max(sliceFromStep, sliceToStep);
+      const from = Math.max(1, Math.min(activeProject.steps.length, minStep));
+      const to = Math.max(from, Math.min(activeProject.steps.length, maxStep));
+
+      const html = await exportStandaloneHtml(activeProject, screenshots, {
+        publicBlur: true,
+        interactiveMode: true,
+        fromStep: from,
+        toStep: to,
+      });
+
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const safeTitle = (sliceLessonTitle.trim() || `lesson-steps-${from}-${to}`)
+        .toLowerCase()
+        .replace(/[^a-z0-9а-яё_-]+/gi, '-');
+      a.download = `${safeTitle}.html`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+      showStatus(
+        uiLang === 'en'
+          ? `Lesson HTML (${from}–${to}) generated and downloaded in ${a.download}!`
+          : `Урок (${from}–${to}) успешно сохранён в ${a.download}!`
+      );
+    } catch (err) {
+      console.error('Failed to export lesson range:', err);
+      showStatus(uiLang === 'en' ? 'Error exporting lesson' : 'Ошибка при экспорте урока');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  // Save selected step range as an independent new project in the studio
+  async function handleSaveRangeAsSubProject() {
+    if (!activeProject || activeProject.steps.length === 0) return;
+    try {
+      setIsLoading(true);
+      const minStep = Math.min(sliceFromStep, sliceToStep);
+      const maxStep = Math.max(sliceFromStep, sliceToStep);
+      const from = Math.max(1, Math.min(activeProject.steps.length, minStep));
+      const to = Math.max(from, Math.min(activeProject.steps.length, maxStep));
+
+      const subProj = await createSubProjectFromRange(
+        activeProject,
+        screenshots,
+        from,
+        to,
+        sliceLessonTitle.trim() || undefined
+      );
+
+      await loadProjects();
+      showStatus(
+        uiLang === 'en'
+          ? `Lesson "${subProj.titleEn}" (${subProj.steps.length} steps) saved as a new project!`
+          : `Урок "${subProj.titleRu}" (${subProj.steps.length} шагов) сохранён как новый проект!`
+      );
+    } catch (err) {
+      console.error('Failed to save range as project:', err);
+      showStatus(uiLang === 'en' ? 'Error saving lesson' : 'Ошибка при сохранении урока');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans transition-colors">
       {/* Hidden Folder Picker */}
@@ -444,6 +578,15 @@ export default function App() {
         webkitdirectory=""
         directory=""
         multiple
+        className="hidden"
+      />
+
+      {/* Hidden Standalone HTML Guide Picker */}
+      <input
+        type="file"
+        ref={htmlInputRef}
+        onChange={handleHtmlSelected}
+        accept=".html,.htm"
         className="hidden"
       />
 
@@ -562,7 +705,15 @@ export default function App() {
 
           {/* Dark / Light Mode Switcher */}
           <button
-            onClick={() => setIsDarkMode(!isDarkMode)}
+            onClick={() => {
+              const next = !isDarkMode;
+              setIsDarkMode(next);
+              try {
+                localStorage.setItem('gct_theme', next ? 'dark' : 'light');
+              } catch {
+                /* ignore */
+              }
+            }}
             className="p-2 rounded-md border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
             title={
               uiLang === 'en'
@@ -605,6 +756,15 @@ export default function App() {
                 >
                   <FolderDown className="w-4 h-4" />
                   {UI_TEXT[uiLang].dashboard.importFolder}
+                </button>
+
+                <button
+                  onClick={() => htmlInputRef.current?.click()}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-semibold text-sm flex items-center gap-2 border border-emerald-400/40 shadow transition"
+                  title={UI_TEXT[uiLang].dashboard.importHtmlHint}
+                >
+                  <FileCode className="w-4 h-4 text-emerald-100" />
+                  {UI_TEXT[uiLang].dashboard.importHtml}
                 </button>
 
                 <button
@@ -756,7 +916,16 @@ export default function App() {
                     : `1. Запись (${screenshots.length})`}
                 </button>
                 <button
-                  onClick={() => setActiveTab('editor')}
+                  onClick={() => {
+                    if (
+                      activeProject &&
+                      activeProject.steps.length > 0 &&
+                      (activeTab === 'capture' || selectedStepIndex >= activeProject.steps.length || selectedStepIndex < 0)
+                    ) {
+                      setSelectedStepIndex(activeProject.steps.length - 1);
+                    }
+                    setActiveTab('editor');
+                  }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
                     activeTab === 'editor'
                       ? 'bg-white dark:bg-slate-800 text-teal-600 dark:text-teal-400 shadow-sm'
@@ -792,10 +961,13 @@ export default function App() {
                   const idx = activeProject.steps.findIndex((s) => s.id === stepId);
                   if (idx !== -1) {
                     setSelectedStepIndex(idx);
+                  } else if (activeProject.steps.length > 0) {
+                    setSelectedStepIndex(activeProject.steps.length - 1);
                   }
                   setActiveTab('editor');
                 }}
                 uiLang={uiLang}
+                {...({ isDarkMode } as any)}
               />
             )}
 
@@ -816,6 +988,17 @@ export default function App() {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setActiveTab('player')}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 shadow-sm transition"
+                      title={uiLang === 'en' ? 'Open Lesson Splitter & Exporter' : 'Открыть нарезку уроков и экспорт'}
+                    >
+                      <Scissors className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>
+                        {uiLang === 'en' ? '✂️ Split into Lessons' : '✂️ Нарезка уроков'}
+                      </span>
+                    </button>
+
                     <button
                       onClick={() => setIsAiModalOpen(true)}
                       className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-gradient-to-r from-teal-600 to-indigo-600 hover:from-teal-500 hover:to-indigo-500 text-white shadow-sm transition"
@@ -946,6 +1129,8 @@ export default function App() {
                         onOpenAiModal={() => setIsAiModalOpen(true)}
                         showStatus={showStatus}
                         uiLang={uiLang}
+                        onSelectStepIndex={(idx) => setSelectedStepIndex(idx)}
+                        onSwitchTab={(tab) => setActiveTab(tab)}
                       />
                     ) : (
                       <div className="text-center py-20 text-slate-400">
@@ -1042,6 +1227,125 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* ✂️ Split Long Guide into Lessons Card */}
+                <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 shadow-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-bold text-base flex items-center gap-2 text-slate-900 dark:text-slate-100">
+                      <span>✂️</span>
+                      {UI_TEXT[uiLang].export.splitterTitle}
+                    </h3>
+                    <span className="text-xs bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-full font-medium border border-indigo-200 dark:border-indigo-800">
+                      {activeProject.steps.length}{' '}
+                      {uiLang === 'en' ? 'steps in current guide' : 'шагов в текущем гайде'}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
+                    {UI_TEXT[uiLang].export.splitterSubtitle}
+                  </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end mb-4 bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60">
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                        {UI_TEXT[uiLang].export.splitterFrom}
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={activeProject.steps.length || 1}
+                        value={sliceFromStep}
+                        onChange={(e) =>
+                          setSliceFromStep(
+                            Math.max(
+                              1,
+                              Math.min(
+                                activeProject.steps.length || 1,
+                                parseInt(e.target.value, 10) || 1
+                              )
+                            )
+                          )
+                        }
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                        {UI_TEXT[uiLang].export.splitterTo}
+                      </label>
+                      <input
+                        type="number"
+                        min={sliceFromStep}
+                        max={activeProject.steps.length || 1}
+                        value={sliceToStep}
+                        onChange={(e) =>
+                          setSliceToStep(
+                            Math.max(
+                              1,
+                              Math.min(
+                                activeProject.steps.length || 1,
+                                parseInt(e.target.value, 10) || 1
+                              )
+                            )
+                          )
+                        }
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+
+                    <div className="md:col-span-5">
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                        {UI_TEXT[uiLang].export.splitterTitleLabel}
+                      </label>
+                      <input
+                        type="text"
+                        value={sliceLessonTitle}
+                        onChange={(e) => setSliceLessonTitle(e.target.value)}
+                        placeholder={
+                          uiLang === 'en'
+                            ? `e.g. Lesson 1: Data Connection (${sliceFromStep}–${sliceToStep})`
+                            : `например, Урок 1: Подключение к данным (${sliceFromStep}–${sliceToStep})`
+                        }
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+
+                    <div className="md:col-span-3 flex items-center h-9 text-xs text-slate-500 dark:text-slate-400">
+                      <span>
+                        {UI_TEXT[uiLang].export.splitterSelectedCount}{' '}
+                        <b className="text-slate-800 dark:text-slate-200">
+                          {Math.max(
+                            0,
+                            Math.min(activeProject.steps.length, sliceToStep) -
+                              Math.min(activeProject.steps.length, sliceFromStep) +
+                              1
+                          )}
+                        </b>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      onClick={handleExportRangeHtml}
+                      disabled={activeProject.steps.length === 0}
+                      className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl font-semibold text-xs flex items-center gap-2 shadow transition"
+                    >
+                      <Download className="w-4 h-4" />
+                      {UI_TEXT[uiLang].export.splitterExportHtml} ({sliceFromStep}–{sliceToStep})
+                    </button>
+
+                    <button
+                      onClick={handleSaveRangeAsSubProject}
+                      disabled={activeProject.steps.length === 0}
+                      className="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-600 px-4 py-2.5 rounded-xl font-semibold text-xs flex items-center gap-2 transition"
+                    >
+                      <Layers className="w-4 h-4 text-indigo-500" />
+                      {UI_TEXT[uiLang].export.splitterSaveProject}
+                    </button>
+                  </div>
+                </div>
+
                 {/* Embedded Live Player Preview */}
                 <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 shadow-sm">
                   <h4 className="font-bold text-sm mb-3 flex items-center gap-2">
@@ -1104,6 +1408,8 @@ function StepEditorPanel({
   onOpenAiModal,
   showStatus,
   uiLang = 'en',
+  onSelectStepIndex,
+  onSwitchTab,
 }: {
   project: GuideProject;
   step: GuideStep;
@@ -1115,6 +1421,8 @@ function StepEditorPanel({
   onOpenAiModal: () => void;
   showStatus: (msg: string) => void;
   uiLang?: 'en' | 'ru';
+  onSelectStepIndex?: (index: number) => void;
+  onSwitchTab?: (tab: ActiveTab) => void;
 }) {
   const currentAsset = screenshots.find((s) => s.id === step.screenshotId) || screenshots[0];
   const [imageUrl, setImageUrl] = useState<string>('');
@@ -1548,6 +1856,33 @@ function StepEditorPanel({
             <Square className="w-3 h-3 text-slate-400" />
             <span>{uiLang === 'en' ? '🎨 Mask Patch' : '🎨 Маска-ластик'}</span>
           </button>
+
+          {currentAsset && ((currentAsset.blurBoxes?.length || 0) > 0 || (currentAsset.maskBoxes?.length || 0) > 0) && (
+            <button
+              type="button"
+              onClick={async () => {
+                await onUpdateScreenshot(currentAsset.id, { blurBoxes: [], maskBoxes: [] });
+                showStatus(
+                  uiLang === 'en'
+                    ? 'Frame blurs and masks cleared'
+                    : 'Блюр и маски текущего кадра очищены'
+                );
+              }}
+              className="px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/40 hover:bg-red-100 dark:hover:bg-red-900/60 transition shadow-2xs"
+              title={
+                uiLang === 'en'
+                  ? 'Remove all local blur and mask boxes from this screenshot frame'
+                  : 'Удалить все зоны размытия и маски с этого кадра'
+              }
+            >
+              <span>🗑️</span>
+              <span>
+                {uiLang === 'en'
+                  ? `Clear Frame Blurs (${(currentAsset.blurBoxes?.length || 0) + (currentAsset.maskBoxes?.length || 0)})`
+                  : `Очистить блюр кадра (${(currentAsset.blurBoxes?.length || 0) + (currentAsset.maskBoxes?.length || 0)})`}
+              </span>
+            </button>
+          )}
         </div>
 
         <div className="text-[11px] text-slate-400 flex items-center gap-2">
@@ -1563,7 +1898,7 @@ function StepEditorPanel({
       </div>
 
       {/* Visual Canvas stage with InteractiveBoxEditor */}
-      <div className="relative border border-slate-300 dark:border-slate-700 rounded-xl overflow-hidden bg-slate-950 flex items-center justify-center min-h-[340px]">
+      <div className="relative w-full aspect-video max-h-[560px] border border-slate-300 dark:border-slate-700 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-950 flex items-center justify-center shadow-inner">
         {imageUrl ? (
           <InteractiveBoxEditor
             imageUrl={imageUrl}
@@ -1599,18 +1934,60 @@ function StepEditorPanel({
           : '💡 Перетаскивайте рамку целиком, тяните за 8 маркеров по краям для изменения размера, или сдвиньте ↖ указатель мыши, чтобы он не закрывал буквы.'}
       </p>
 
-      {/* Single Unified Instruction field */}
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between">
-          <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
-            {uiLang === 'en' ? 'Instruction' : 'Инструкция'}
-          </label>
-          <span className="text-[10px] text-slate-400">
-            {uiLang === 'en'
-              ? 'Supports <b>bold</b> for button names'
-              : 'Поддерживает <b>жирный</b> для названий кнопок'}
-          </span>
+      {/* Single Unified Instruction field with Quick Action Presets */}
+      <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-teal-200/80 dark:border-teal-900/40 shadow-xs space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <label className="block text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+              <Edit3 className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+              <span>{uiLang === 'en' ? 'Instruction' : 'Инструкция'}</span>
+            </label>
+            <span className="text-[10px] text-slate-400">
+              {uiLang === 'en'
+                ? '(supports <b>bold</b> for element names)'
+                : '(поддерживает <b>жирный</b> для названий кнопок)'}
+            </span>
+          </div>
+
+          {/* Quick Action Presets: Click, Type, Select, Notice */}
+          <div className="flex items-center gap-1 bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs">
+            <span className="text-[10px] font-semibold text-slate-400 px-1 hidden sm:inline">
+              {uiLang === 'en' ? 'Presets:' : 'Пресеты:'}
+            </span>
+            {[
+              { act: 'click' as ActionType, labelEn: 'Click', labelRu: 'Нажать', icon: '🔴' },
+              { act: 'type' as ActionType, labelEn: 'Type', labelRu: 'Ввести', icon: '⌨️' },
+              { act: 'select' as ActionType, labelEn: 'Select', labelRu: 'Выбрать', icon: '📋' },
+              { act: 'look' as ActionType, labelEn: 'Notice', labelRu: 'Обратить внимание', icon: '👁️' },
+            ].map((p) => {
+              const isSelected = step.act === p.act;
+              return (
+                <button
+                  key={p.act}
+                  type="button"
+                  onClick={() => {
+                    const curText = step.ru || step.en || '';
+                    const match = curText.match(/<b>(.*?)<\/b>/i);
+                    const targetName = match ? match[1] : '';
+                    const formatted = formatActionInstruction(p.act, targetName);
+                    const val = uiLang === 'en' ? formatted.en : formatted.ru;
+                    onUpdateStep({ act: p.act, ru: val, en: val });
+                  }}
+                  className={`px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1 transition ${
+                    isSelected
+                      ? 'bg-teal-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`}
+                  title={uiLang === 'en' ? `Set action to ${p.labelEn}` : `Выбрать действие: ${p.labelRu}`}
+                >
+                  <span className="text-[11px]">{p.icon}</span>
+                  <span>{uiLang === 'en' ? p.labelEn : p.labelRu}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
+
         <textarea
           rows={3}
           value={uiLang === 'en' ? (step.en || step.ru || '') : (step.ru || step.en || '')}
@@ -1623,7 +2000,7 @@ function StepEditorPanel({
               ? 'Click <b>+ New</b> to add a new item...'
               : 'Нажмите <b>+ Создать</b> для добавления элемента...'
           }
-          className="w-full text-xs p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-normal focus:ring-2 focus:ring-teal-500 focus:outline-none transition leading-relaxed"
+          className="w-full text-xs p-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-normal focus:ring-2 focus:ring-teal-500 focus:outline-none transition leading-relaxed shadow-inner"
         />
       </div>
 
@@ -1652,6 +2029,45 @@ function StepEditorPanel({
               {uiLang === 'en' ? 'Cursor' : 'Курсор'}: [{step.cursorPos.x}%, {step.cursorPos.y}%]
             </span>
           )}
+        </div>
+      </div>
+
+      {/* Step Navigation Footer */}
+      <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700/80 gap-3">
+        <button
+          type="button"
+          onClick={() => onSelectStepIndex && onSelectStepIndex(stepIndex - 1)}
+          disabled={stepIndex === 0 || !onSelectStepIndex}
+          className="px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none flex items-center gap-1.5 transition text-slate-700 dark:text-slate-200"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          <span>{uiLang === 'en' ? '← Previous Step' : '← Предыдущий шаг'}</span>
+        </button>
+
+        <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+          {uiLang === 'en'
+            ? `Step ${stepIndex + 1} of ${project.steps.length}`
+            : `Шаг ${stepIndex + 1} из ${project.steps.length}`}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onSelectStepIndex && onSelectStepIndex(stepIndex + 1)}
+            disabled={stepIndex >= project.steps.length - 1 || !onSelectStepIndex}
+            className="px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none flex items-center gap-1.5 transition text-slate-700 dark:text-slate-200"
+          >
+            <span>{uiLang === 'en' ? 'Next Step →' : 'Следующий шаг →'}</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onSwitchTab && onSwitchTab('player')}
+            className="px-4 py-2 rounded-xl text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-sm flex items-center gap-1.5 transition"
+          >
+            <span>{uiLang === 'en' ? '▶️ Preview & Export Guide →' : '▶️ Плеер и Экспорт →'}</span>
+          </button>
         </div>
       </div>
     </div>
