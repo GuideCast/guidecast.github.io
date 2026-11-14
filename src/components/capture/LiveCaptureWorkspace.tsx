@@ -81,22 +81,26 @@ const ACTION_DEFAULTS: Record<'en' | 'ru', Record<ActionType, { prefix: string; 
 
 const translations = {
   en: {
-    flow1Title: 'Share your program tab',
-    flow1Desc: 'In the browser dialog choose the "Tab" (Chrome tab) with your program, not this page.',
-    flowSharing: 'Sharing is on',
-    flow2Title: 'Open the floating recorder',
-    flow2Desc: 'A small window on top of your program: snap steps without coming back here. Required to record in another tab.',
-    flow2Locked: 'Start step 1 first',
-    flow2NoPip: 'This browser cannot float over other tabs. A recorder panel will open on this page instead.',
-    flow3Title: 'Snap each step',
-    flow3Desc: 'In the floating recorder (or in the preview here) drag over the button you click. Each snap is a step. You can dictate captions.',
-    flow3Badge: 'Drag over a button = one step',
-    previewIdle: 'The live preview of your program will appear here after step 1.',
+    flow1Title: 'Start recording',
+    flow1Desc: 'A small floating recorder opens. In it, click "Choose the tab to record" and pick the tab with your program. Chrome takes you there, and the recorder stays on top.',
+    startRecording: 'Start recording',
+    recorderWaiting: 'Now click "Choose the tab to record" in the floating recorder',
+    flowSharing: 'Recording',
+    showRecorder: 'Show floating recorder',
+    flowNoPip: 'This browser cannot float a window over other tabs, so the recorder opens on this page.',
+    flow2Title: 'Snap each step',
+    flow2Desc: 'In the floating recorder, drag over the button you are about to click. Each snap is one step. Then type or dictate the caption.',
+    flow2Badge: 'Drag over a button = one step',
+    chooseTabTitle: 'Which tab do you want to record?',
+    chooseTabDesc: 'Pick the Chrome tab with your program, not this guide tool. Chrome switches to it and this recorder stays on top.',
+    chooseTabBtn: 'Choose the tab to record',
+    orPasteImages: 'Or paste screenshots (Ctrl+V) or upload image files at any time.',
+    previewIdle: 'The live picture of your program appears here after you start recording.',
     voiceTip: 'Dictate step captions by voice',
     langTip: 'Switch interface and dictation language',
     startCapture: 'Start Screen Capture',
     stopCapture: 'Stop Capture',
-    changeSource: 'Change Shared Tab / Window',
+    changeSource: 'Record a different tab',
     popOutPip: 'Pop Out Floating Recorder',
     popOutPipActive: 'Floating Recorder Is Open',
     popOutPipTip: 'Opens an always-on-top mini window that floats over your target web app',
@@ -112,21 +116,6 @@ const translations = {
     waitingBadge: 'STANDBY',
     screenLive: 'Screen Live',
     captureWaiting: 'Capture Standby',
-
-    // 3 Onboarding Steps (Before Capture)
-    step1Title: 'Step 1: Click "Start Screen Capture"',
-    step1Desc: 'In the browser popup, choose the "Browser Tab" (e.g. your BI web app) or "Window". Do NOT pick this Guide Tool tab to avoid a mirror effect!',
-    step2Title: 'Step 2: Click "Pop Out Floating Recorder"',
-    step2Desc: 'Opens an always-on-top mini window that floats right over your target tab while you work!',
-    step3Title: 'Step 3: Snap & Highlight Buttons ("Snipping Tool" style)',
-    step3Desc: 'In the floating window (or on the preview here), click "Snap & Highlight" or simply drag your mouse over any button to capture the frame and highlight box in one move!',
-    startCaptureBtn: 'Start Screen Capture',
-    orPasteImages: 'Or paste screenshots from clipboard (Ctrl+V) or upload image files anytime.',
-
-    // Notice banner when stream active but PiP not open
-    pipWarningTitle: 'Working in another browser tab?',
-    pipWarningBody: 'Click "Pop Out Floating Recorder (Always on Top)" BEFORE switching tabs, otherwise you won\'t see the capture controls while inside your other tab!',
-    openPipNow: 'Pop Out Floating Recorder (Stay on Top)',
 
     // Modes & actions
     selectionMode: 'Selection Mode:',
@@ -193,22 +182,26 @@ const translations = {
     pipFallbackMsg: 'Document Picture-in-Picture is not supported in this browser. Opened floating remote on page instead.',
   },
   ru: {
-    flow1Title: 'Поделитесь вкладкой с программой',
-    flow1Desc: 'В окне браузера выберите «Вкладку» (вкладку Chrome) с вашей программой, а не эту страницу.',
-    flowSharing: 'Экран передаётся',
-    flow2Title: 'Откройте плавающий пульт',
-    flow2Desc: 'Маленькое окно остаётся поверх вашей программы, шаги снимаются без возврата сюда. Без него запись в другой вкладке невозможна.',
-    flow2Locked: 'Сначала выполните шаг 1',
-    flow2NoPip: 'Этот браузер не умеет показывать окно поверх других вкладок. Пульт откроется на этой странице.',
-    flow3Title: 'Снимайте каждый шаг',
-    flow3Desc: 'В плавающем пульте (или в превью здесь) обведите мышью кнопку, на которую нажимаете. Каждый снимок это шаг. Подпись можно надиктовать.',
-    flow3Badge: 'Обвели кнопку = один шаг',
-    previewIdle: 'Живое превью вашей программы появится здесь после шага 1.',
+    flow1Title: 'Начните запись',
+    flow1Desc: 'Откроется маленький плавающий пульт. Нажмите в нём «Выбрать вкладку для записи» и укажите вкладку с вашей программой. Chrome перейдёт туда, а пульт останется поверх.',
+    startRecording: 'Начать запись',
+    recorderWaiting: 'Теперь нажмите «Выбрать вкладку для записи» в плавающем пульте',
+    flowSharing: 'Идёт запись',
+    showRecorder: 'Показать плавающий пульт',
+    flowNoPip: 'Этот браузер не умеет показывать окно поверх других вкладок, поэтому пульт откроется на этой странице.',
+    flow2Title: 'Снимайте каждый шаг',
+    flow2Desc: 'В плавающем пульте обведите мышью кнопку, на которую сейчас нажмёте. Каждый снимок это один шаг. Потом напишите или надиктуйте подпись.',
+    flow2Badge: 'Обвели кнопку = один шаг',
+    chooseTabTitle: 'Какую вкладку записывать?',
+    chooseTabDesc: 'Выберите вкладку Chrome с вашей программой, а не этот редактор гайдов. Chrome перейдёт на неё, а пульт останется поверх.',
+    chooseTabBtn: 'Выбрать вкладку для записи',
+    orPasteImages: 'Или вставляйте скриншоты (Ctrl+V) и загружайте картинки в любой момент.',
+    previewIdle: 'Живая картинка вашей программы появится здесь, когда вы начнёте запись.',
     voiceTip: 'Диктовать подписи шагов голосом',
     langTip: 'Переключить язык интерфейса и диктовки',
     startCapture: 'Начать захват экрана',
     stopCapture: 'Остановить захват',
-    changeSource: 'Сменить окно / вкладку',
+    changeSource: 'Записать другую вкладку',
     popOutPip: 'Открыть плавающий пульт',
     popOutPipActive: 'Плавающий пульт открыт',
     popOutPipTip: 'Открывает окно поверх всех вкладок браузера и программ',
@@ -224,21 +217,6 @@ const translations = {
     waitingBadge: 'ОЖИДАНИЕ',
     screenLive: 'Экран в эфире',
     captureWaiting: 'Захват ожидает',
-
-    // 3 Onboarding Steps (Before Capture)
-    step1Title: 'Шаг 1: Нажмите «Начать захват экрана»',
-    step1Desc: 'В окне браузера выберите «Вкладку» (ваше веб-приложение) или «Окно». НЕ выбирайте эту вкладку Guide Tool, чтобы не было зеркального эффекта!',
-    step2Title: 'Шаг 2: Нажмите «Плавающий пульт PiP»',
-    step2Desc: 'Открывает поверх всех окон мини-пульт, который будет виден во время вашей работы во вкладке приложения!',
-    step3Title: 'Шаг 3: Выделяйте кнопки («Ножницы» / Snipping)',
-    step3Desc: 'В плавающем пульте (или на превью здесь) нажмите «Снять кадр и выделить» или просто обведите нужную кнопку мышкой для фиксации шага за один жест!',
-    startCaptureBtn: 'Начать захват экрана',
-    orPasteImages: 'Или вставляйте скриншоты из буфера обмена (Ctrl+V) или загружайте файлы в любой момент.',
-
-    // Notice banner when stream active but PiP not open
-    pipWarningTitle: 'Работаете в другой вкладке браузера?',
-    pipWarningBody: 'Нажмите «Плавающий пульт (Поверх всех окон)» ДО переключения во вкладку, иначе вы не увидите кнопки записи внутри другой вкладки!',
-    openPipNow: 'Плавающий пульт (Поверх всех окон)',
 
     // Modes & actions
     selectionMode: 'Режим выделения:',
@@ -562,6 +540,29 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
     }
   };
 
+  // --- One-action start: open the floating recorder first (needs this click),
+  // then the teacher picks the tab from inside it. Chrome switches to the chosen
+  // tab and the always-on-top recorder is already there. Without Document PiP
+  // (Firefox, Safari) we ask for the tab directly and show the in-page recorder.
+  const handleStartRecording = async () => {
+    if (isPipSupported()) {
+      if (!pipWindow) {
+        await handleTogglePip();
+      } else {
+        try {
+          pipWindow.focus();
+        } catch {
+          // ignore
+        }
+      }
+      return;
+    }
+    setShowInAppMiniRemote(true);
+    if (!isCapturingScreen) {
+      await handleStartCapture();
+    }
+  };
+
   // --- Item 4: Smooth transition to Step Editor without black screen ---
   const handleOpenEditor = (stepId?: string) => {
     closePipWindow();
@@ -644,10 +645,13 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
 
     let mediaW = 0;
     let mediaH = 0;
-    if (media instanceof HTMLVideoElement) {
+    // Duck typing on purpose: elements inside the floating recorder (Document PiP)
+    // belong to another window, so `instanceof HTMLVideoElement` is false there and
+    // the box ended up vertically shifted on letterboxed video.
+    if (media && 'videoWidth' in media) {
       mediaW = media.videoWidth;
       mediaH = media.videoHeight;
-    } else if (media instanceof HTMLImageElement) {
+    } else if (media && 'naturalWidth' in media) {
       mediaW = media.naturalWidth;
       mediaH = media.naturalHeight;
     }
@@ -1238,7 +1242,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
                 className="px-2 py-0.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-[11px] font-bold shadow transition flex items-center gap-1"
                 title={text.finishAndEdit.replace('{n}', String(project.steps.length))}
               >
-                <span>🏁</span>
+                <ExternalLink className="w-3 h-3" />
                 <span className="hidden sm:inline">{text.openInEditor}</span>
               </button>
             )}
@@ -1299,6 +1303,33 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
             muted
             className={`w-full h-full object-contain pointer-events-none ${isFrozen ? 'hidden' : 'block'}`}
           />
+
+          {/* Not recording yet: the first thing the teacher sees in the recorder */}
+          {!isFrozen && !isCapturingScreen && (
+            <div
+              className={`absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 p-4 text-center ${
+                isDarkMode ? 'bg-slate-900' : 'bg-slate-50'
+              }`}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <Monitor className="w-10 h-10 text-emerald-500" />
+              <h3 className={`text-lg font-bold leading-tight ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>
+                {text.chooseTabTitle}
+              </h3>
+              <p className={`text-sm leading-snug max-w-sm ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                {text.chooseTabDesc}
+              </p>
+              <button
+                type="button"
+                data-testid="choose-tab"
+                onClick={handleStartCapture}
+                className="h-12 px-5 flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-base font-bold shadow transition"
+              >
+                <Video className="w-5 h-5" />
+                <span>{text.chooseTabBtn}</span>
+              </button>
+            </div>
+          )}
 
           {/* Frozen Step Interactive Box & Cursor Editor */}
           {isFrozen && activeStep && assetUrls[activeStep.screenshotId] && (
@@ -1368,7 +1399,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
                 }`}
                 title={text.modeTarget}
               >
-                <span>🔴</span>
+                <Square className="w-3 h-3" />
                 <span className="font-semibold">{lang === 'en' ? 'Target Box' : 'Рамка шага'}</span>
               </button>
 
@@ -1512,7 +1543,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
                 <span>{text.saveAndNext}</span>
               </button>
             </div>
-          ) : (
+          ) : !isCapturingScreen ? null : (
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -1616,14 +1647,16 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={handleStopCapture}
-            className="flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-600 font-medium transition"
-          >
-            <VideoOff className="w-3.5 h-3.5" />
-            <span>{text.finishCapture}</span>
-          </button>
+          {isCapturingScreen && (
+            <button
+              type="button"
+              onClick={handleStopCapture}
+              className="flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-600 font-medium transition"
+            >
+              <VideoOff className="w-3.5 h-3.5" />
+              <span>{text.finishCapture}</span>
+            </button>
+          )}
         </div>
       </div>
     );
@@ -1648,11 +1681,11 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
         </div>
       )}
 
-      {/* Prominent 3-step recording flow */}
+      {/* Prominent 2-step recording flow */}
       {(() => {
         const pipOpen = !!pipWindow || showInAppMiniRemote;
-        const currentStep = !isCapturingScreen ? 1 : !pipOpen ? 2 : 3;
-        const done = [isCapturingScreen, pipOpen, false];
+        const currentStep = !isCapturingScreen ? 1 : 2;
+        const done = [isCapturingScreen, false];
         const pipSupported = isPipSupported();
         const secondaryBtn = `flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition ${
           isDarkMode
@@ -1688,15 +1721,15 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
         const descClass = `text-[15px] leading-snug ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`;
         const bigBtn =
           'mt-auto w-full h-12 flex items-center justify-center gap-2 rounded-lg text-base font-bold transition disabled:opacity-50 disabled:cursor-not-allowed';
-        const pipDisabled = !isCapturingScreen;
+        const waitingInRecorder = !isCapturingScreen && !!pipWindow;
         return (
           <section
             className={`px-4 pt-3 pb-2 border-b ${
               isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'
             }`}
           >
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-              {/* Step 1 */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {/* Step 1: one action opens the recorder, the tab is chosen inside it */}
               <div className={cardClass(1)}>
                 <div className="flex items-center gap-3">
                   {badge(1)}
@@ -1705,28 +1738,50 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
                 <p className={descClass}>{text.flow1Desc}</p>
                 {!isCapturingScreen ? (
                   <button
-                    onClick={handleStartCapture}
-                    className={`${bigBtn} bg-emerald-600 hover:bg-emerald-500 text-white shadow`}
-                  >
-                    <Video className="w-5 h-5" />
-                    <span>{text.startCapture}</span>
-                  </button>
-                ) : (
-                  <div
-                    className={`${bigBtn} border ${
-                      isDarkMode
-                        ? 'border-emerald-700 text-emerald-300 bg-emerald-950/40'
-                        : 'border-emerald-300 text-emerald-700 bg-emerald-50'
+                    data-testid="start-recording"
+                    onClick={handleStartRecording}
+                    className={`${bigBtn} ${
+                      waitingInRecorder
+                        ? 'bg-sky-600 hover:bg-sky-500 text-white'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow'
                     }`}
                   >
-                    <CheckCircle2 className="w-5 h-5" />
-                    <span>{text.flowSharing}</span>
-                    {videoResolution && (
-                      <span className="font-mono text-xs font-normal opacity-80">
-                        {videoResolution.width}×{videoResolution.height}
+                    <Video className="w-5 h-5" />
+                    <span>{waitingInRecorder ? text.recorderWaiting : text.startRecording}</span>
+                  </button>
+                ) : (
+                  <div className="mt-auto flex gap-2">
+                    <div
+                      className={`flex-1 h-12 flex items-center justify-center gap-2 rounded-lg border text-base font-bold ${
+                        isDarkMode
+                          ? 'border-emerald-700 text-emerald-300 bg-emerald-950/40'
+                          : 'border-emerald-300 text-emerald-700 bg-emerald-50'
+                      }`}
+                    >
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
                       </span>
+                      <span>{text.flowSharing}</span>
+                      {videoResolution && (
+                        <span className="font-mono text-xs font-normal opacity-80">
+                          {videoResolution.width}×{videoResolution.height}
+                        </span>
+                      )}
+                    </div>
+                    {!pipOpen && (
+                      <button
+                        onClick={handleTogglePip}
+                        className="h-12 px-4 flex items-center justify-center gap-2 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow transition"
+                      >
+                        <Square className="w-4 h-4" />
+                        <span>{text.showRecorder}</span>
+                      </button>
                     )}
                   </div>
+                )}
+                {!pipSupported && (
+                  <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{text.flowNoPip}</p>
                 )}
               </div>
 
@@ -1737,42 +1792,6 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
                   <h3 className={titleClass}>{text.flow2Title}</h3>
                 </div>
                 <p className={descClass}>{text.flow2Desc}</p>
-                <button
-                  onClick={handleTogglePip}
-                  disabled={pipDisabled}
-                  title={text.popOutPipTip}
-                  className={`${bigBtn} ${
-                    pipOpen
-                      ? 'bg-sky-600 hover:bg-sky-500 text-white'
-                      : currentStep === 2
-                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow'
-                      : isDarkMode
-                      ? 'bg-slate-900 text-emerald-300 border-2 border-dashed border-emerald-700 disabled:opacity-100 disabled:cursor-not-allowed'
-                      : 'bg-white text-emerald-800 border-2 border-dashed border-emerald-400 disabled:opacity-100 disabled:cursor-not-allowed'
-                  }`}
-                >
-                  <Square className="w-5 h-5" />
-                  <span>{pipOpen ? text.popOutPipActive : text.popOutPip}</span>
-                </button>
-                {pipDisabled && (
-                  <p className={`text-xs ${isDarkMode ? 'text-amber-300' : 'text-amber-700'}`}>
-                    {text.flow2Locked}
-                  </p>
-                )}
-                {!pipDisabled && !pipOpen && !pipSupported && (
-                  <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                    {text.flow2NoPip}
-                  </p>
-                )}
-              </div>
-
-              {/* Step 3 */}
-              <div className={cardClass(3)}>
-                <div className="flex items-center gap-3">
-                  {badge(3)}
-                  <h3 className={titleClass}>{text.flow3Title}</h3>
-                </div>
-                <p className={descClass}>{text.flow3Desc}</p>
                 <div
                   className={`mt-auto w-full h-12 flex items-center justify-center gap-2 rounded-lg border text-sm font-semibold ${
                     isDarkMode
@@ -1781,11 +1800,10 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
                   }`}
                 >
                   <Scissors className="w-5 h-5 text-emerald-500" />
-                  <span>{text.flow3Badge}</span>
+                  <span>{text.flow2Badge}</span>
                 </div>
               </div>
             </div>
-
             {/* Secondary controls */}
             <div className="flex flex-wrap items-center gap-2 mt-2">
               {isCapturingScreen && (
@@ -1801,19 +1819,6 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
                     <RefreshCw className="w-3.5 h-3.5 text-amber-500" />
                     <span>{text.changeSource}</span>
                   </button>
-                  <div
-                    className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg border ${
-                      isDarkMode
-                        ? 'bg-slate-800/80 text-slate-300 border-slate-700'
-                        : 'bg-slate-100 text-slate-700 border-slate-200'
-                    }`}
-                  >
-                    <span className="relative flex h-2.5 w-2.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
-                    </span>
-                    <span>{text.liveBadge}</span>
-                  </div>
                 </>
               )}
 
