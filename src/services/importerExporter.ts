@@ -18,6 +18,33 @@ import {
 import { renderProcessedScreenshot } from './canvasRenderer';
 
 /**
+ * Make JSON safe to embed inside a <script> element: '<' can never form '</script' or '<!--'.
+ */
+function safeJsonForScript(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, '\\u003c');
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error || new Error('Failed to read blob'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+const SOURCE_FORMAT = 'guide-creation-tool/project';
+
+/**
  * Computes default cursor position slightly inside the bottom-right corner of the target box.
  */
 function computeDefaultCursorPos(box: BoxRect): { x: number; y: number } {
@@ -184,20 +211,38 @@ function percentToLegacyBox(
  */
 export async function importFromLegacyFolder(fileList: FileList | File[]): Promise<GuideProject> {
   const files = Array.from(fileList);
-  const jsonFile = files.find(
-    (f) => f.name.toLowerCase() === 'steps.json' || f.name.toLowerCase().endsWith('.json')
-  );
+  const jsonCandidates = files.filter((f) => f.name.toLowerCase().endsWith('.json'));
+  // Prefer a file named exactly steps.json, then any other .json that parses and has a steps array
+  jsonCandidates.sort((a, b) => {
+    const an = a.name.toLowerCase() === 'steps.json' ? 0 : 1;
+    const bn = b.name.toLowerCase() === 'steps.json' ? 0 : 1;
+    return an - bn;
+  });
 
-  if (!jsonFile) {
+  if (jsonCandidates.length === 0) {
     throw new Error('steps.json was not found in the selected folder/files.');
   }
 
-  const jsonText = await jsonFile.text();
-  let parsed: LegacyStepsJson;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch (err) {
-    throw new Error('Failed to parse steps.json: invalid JSON syntax.');
+  let parsed: LegacyStepsJson | null = null;
+  let sawInvalidSteps = false;
+  for (const cand of jsonCandidates) {
+    try {
+      const obj = JSON.parse(await cand.text());
+      if (obj && Array.isArray(obj.steps)) {
+        parsed = obj as LegacyStepsJson;
+        break;
+      }
+      sawInvalidSteps = true;
+    } catch {
+      sawInvalidSteps = true;
+    }
+  }
+  if (!parsed) {
+    throw new Error(
+      sawInvalidSteps
+        ? 'No valid steps.json found: no .json file with a "steps" array that parses correctly.'
+        : 'steps.json was not found in the selected folder/files.'
+    );
   }
 
   const dw = parsed.display_width || 2000;
@@ -269,6 +314,17 @@ export async function importFromLegacyFolder(fileList: FileList | File[]): Promi
     assetMap.set(imgName.toLowerCase(), asset);
   }
 
+  // Global blur: converted using the first referenced image's dimensions (fallback 1920x1080)
+  let globalBlurBoxes: BoxRect[] = [];
+  if (Array.isArray(parsed.global_blur) && parsed.global_blur.length > 0) {
+    const firstAsset = referencedImages.size > 0 ? assetMap.get([...referencedImages][0].toLowerCase()) : undefined;
+    const gw = firstAsset?.width || 1920;
+    const gh = firstAsset?.height || 1080;
+    globalBlurBoxes = parsed.global_blur
+      .filter((b) => Array.isArray(b) && b.length >= 4)
+      .map((b) => legacyBoxToPercent(b, dw, gw, gh));
+  }
+
   // Convert legacy steps
   const steps: GuideStep[] = [];
   if (Array.isArray(parsed.steps)) {
@@ -303,7 +359,7 @@ export async function importFromLegacyFolder(fileList: FileList | File[]): Promi
     subEn: parsed.sub_en || 'Step-by-step instructions',
     subRu: parsed.sub_ru || 'Пошаговые инструкции',
     defaultLang: parsed.default_lang || 'en',
-    globalBlurBoxes: [],
+    globalBlurBoxes,
     steps,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -368,6 +424,11 @@ export function exportToLegacyJson(
     }
   }
 
+  const firstUsed = project.steps.map((st) => assetById.get(st.screenshotId)).find(Boolean) || screenshots[0];
+  const gw = firstUsed?.width || 1920;
+  const gh = firstUsed?.height || 1080;
+  const globalBlur = (project.globalBlurBoxes || []).map((b) => percentToLegacyBox(b, dw, gw, gh));
+
   return {
     page_title: project.pageTitle,
     title_en: project.titleEn,
@@ -379,6 +440,7 @@ export function exportToLegacyJson(
     steps: legacySteps,
     blur: Object.keys(blur).length > 0 ? blur : undefined,
     mask: Object.keys(mask).length > 0 ? mask : undefined,
+    global_blur: globalBlur.length > 0 ? globalBlur : undefined,
   };
 }
 
@@ -392,6 +454,8 @@ export async function exportStandaloneHtml(
   options: {
     publicBlur: boolean;
     interactiveMode?: boolean;
+    /** Embed the full editable project (original screenshots, blur/mask boxes). Ignored when publicBlur is true. */
+    embedSource?: boolean;
     fromStep?: number;
     toStep?: number;
   } = { publicBlur: true }
@@ -472,10 +536,51 @@ export async function exportStandaloneHtml(
     default_lang: project.defaultLang,
   };
 
-  const stepsJson = JSON.stringify(steps);
-  const imagesJson = JSON.stringify(images);
-  const metaJson = JSON.stringify(meta);
-  const pageTitle = ((project.defaultLang === 'ru' ? titleRu : titleEn) || project.pageTitle || 'Interactive Step Guide') + (isSliced ? sliceSuffixEn : '');
+  const stepsJson = safeJsonForScript(steps);
+  const imagesJson = safeJsonForScript(images);
+  const metaJson = safeJsonForScript(meta);
+  const pageTitle = escapeHtml(((project.defaultLang === 'ru' ? titleRu : titleEn) || project.pageTitle || 'Interactive Step Guide') + (isSliced ? sliceSuffixEn : ''));
+
+  let sourceBlock = '';
+  if (options.embedSource && !options.publicBlur) {
+    const sourceShots = [];
+    for (const a of screenshots) {
+      sourceShots.push({
+        id: a.id,
+        filename: a.filename,
+        width: a.width,
+        height: a.height,
+        blurBoxes: a.blurBoxes || [],
+        maskBoxes: a.maskBoxes || [],
+        dataUrl: await blobToDataUrl(a.blob),
+      });
+    }
+    const source = {
+      format: SOURCE_FORMAT,
+      version: 1,
+      pageTitle: project.pageTitle,
+      titleEn: project.titleEn,
+      titleRu: project.titleRu,
+      subEn: project.subEn,
+      subRu: project.subRu,
+      defaultLang: project.defaultLang,
+      globalBlurBoxes: project.globalBlurBoxes || [],
+      steps: project.steps.map((st) => ({
+        id: st.id,
+        screenshotId: st.screenshotId,
+        chapterTitle: st.chapterTitle,
+        act: st.act,
+        box: st.box,
+        cursorPos: st.cursorPos,
+        en: st.en,
+        ru: st.ru,
+        voiceDraft: st.voiceDraft,
+        keepBlur: st.keepBlur,
+      })),
+      screenshots: sourceShots,
+    };
+    sourceBlock = `<script type="application/json" id="guide-source">${safeJsonForScript(source)}</script>\n`;
+  }
 
   return `<!doctype html>
 <html lang="${project.defaultLang || (isSingleLang ? 'en' : 'ru')}">
@@ -572,7 +677,7 @@ body.fs #fsx:hover{opacity:1}
       <button class="fsbtn" id="fsb" title="F"></button>
       <div class="seg" role="group" aria-label="Language"${isSingleLang ? ' style="display:none"' : ''}>
         <button data-lang="en" aria-pressed="false">EN</button>
-        <button data-lang="ru" aria-pressed="true">RU</button>
+        <button data-lang="ru" aria-pressed="false">RU</button>
       </div>
     </div>
   </header>
@@ -615,7 +720,7 @@ body.fs #fsx:hover{opacity:1}
   <div class="hint" id="hint"></div>
 </div>
 
-<script id="app">
+${sourceBlock}<script id="app">
 const STEPS = ${stepsJson};
 const IMAGES = ${imagesJson};
 const META = ${metaJson};
@@ -649,11 +754,12 @@ for (const l of ["en","ru"]) {
   if (META["sub_"+l]) I18N[l].sub = META["sub_"+l];
 }
 
-let lang = (META.default_lang && I18N[META.default_lang]) ? META.default_lang : "${isSingleLang ? (project.defaultLang || 'en') : 'ru'}";
-${isSingleLang ? '' : 'try { const s = localStorage.getItem("lang"); if(s && I18N[s]) lang = s; } catch(e){}'}
+let lang = (META.default_lang && I18N[META.default_lang]) ? META.default_lang : "${project.defaultLang || 'en'}";
+const LANG_KEY = "lang:" + (META.title_en || META.title_ru || "");
+${isSingleLang ? '' : 'try { const s = localStorage.getItem(LANG_KEY); if(s && I18N[s]) lang = s; } catch(e){}'}
 
 let i = 0;
-let trainerMode = ${options.interactiveMode ? 'true' : 'true'};
+let trainerMode = ${options.interactiveMode === false ? 'false' : 'true'};
 
 const $ = id => document.getElementById(id);
 
@@ -683,6 +789,9 @@ function render() {
 
   const [x,y,w,h] = s.box, hl = $("hl");
   hl.style.cssText = \`left:\${x}%;top:\${y}%;width:\${w}%;height:\${h}%\`;
+  hl.classList.toggle("clickable", trainerMode);
+  hl.style.pointerEvents = trainerMode ? "" : "none";
+  hl.title = trainerMode ? "Click here to advance" : "";
   
   const c = $("cur");
   if (s.cursorPos && Array.isArray(s.cursorPos)) {
@@ -698,7 +807,11 @@ function render() {
 
   const bContainer = $("chapterBadgeContainer");
   if (s.chapterTitle) {
-    bContainer.innerHTML = \`<span class="chapter-badge">📑 \${s.chapterTitle}</span>\`;
+    bContainer.textContent = "";
+    const badge = document.createElement("span");
+    badge.className = "chapter-badge";
+    badge.textContent = "📑 " + s.chapterTitle;
+    bContainer.appendChild(badge);
   } else {
     bContainer.innerHTML = "";
   }
@@ -787,7 +900,7 @@ $("hl").onclick = (e) => {
 
 // Clicking screenshot outside target in trainer mode shakes/pulses the box
 $("shot").onclick = (e) => {
-  if (e.target.id !== "hl") {
+  if (trainerMode && e.target.id !== "hl") {
     const hl = $("hl");
     hl.style.borderColor = "#f59e0b";
     setTimeout(() => { hl.style.borderColor = ""; }, 400);
@@ -826,9 +939,10 @@ $("lsave").onclick = () => {
   const src = document.getElementById("app").textContent;
   const NL = String.fromCharCode(10);
   const k = src.indexOf(NL + "const I18N");
-  const code = "const STEPS = " + JSON.stringify(slicedSteps) + ";" + NL +
-               "const IMAGES = " + JSON.stringify(slicedImgs) + ";" + NL +
-               "const META = " + JSON.stringify(META) + ";" + src.slice(k);
+  const safe = o => JSON.stringify(o).replace(/</g, "\\\\u003c");
+  const code = "const STEPS = " + safe(slicedSteps) + ";" + NL +
+               "const IMAGES = " + safe(slicedImgs) + ";" + NL +
+               "const META = " + safe(META) + ";" + src.slice(k);
 
   const doc = document.documentElement.cloneNode(true);
   doc.querySelector("body").className = "";
@@ -837,6 +951,8 @@ $("lsave").onclick = () => {
   doc.querySelector("#lesson").className = "lesson";
   doc.querySelector("#chaptersMenu").className = "chapters-menu";
   doc.querySelector("#app").textContent = code;
+  const gsrc = doc.querySelector("#guide-source");
+  if (gsrc) gsrc.remove();
   doc.querySelector("title").textContent = document.title + " (steps " + a + "-" + b + ")";
 
   const html = "<!doctype html>" + NL + doc.outerHTML;
@@ -867,11 +983,13 @@ document.querySelector(".seg").onclick = e => {
   const l = e.target.dataset.lang;
   if (!l) return;
   lang = l;
-  try { localStorage.setItem("lang", l); } catch(e){}
+  try { localStorage.setItem(LANG_KEY, l); } catch(e){}
   render();
 };
 
 document.addEventListener("keydown", e => {
+  const tg = e.target, tn = tg && tg.tagName;
+  if (tn === "INPUT" || tn === "SELECT" || tn === "TEXTAREA" || (tg && tg.isContentEditable)) return;
   if (e.key === "ArrowRight") go(i + 1);
   if (e.key === "ArrowLeft") go(i - 1);
   if ((e.key === "f" || e.key === "F" || e.key === "а" || e.key === "А") && !e.ctrlKey && !e.metaKey && !e.altKey) toggleFS();
@@ -890,6 +1008,9 @@ render();
  */
 export async function importFromStandaloneHtml(file: File): Promise<GuideProject> {
   const html = await file.text();
+
+  const embedded = await tryImportEmbeddedSource(html);
+  if (embedded) return embedded;
 
   // Extract page title from <title>...</title>
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
@@ -1098,4 +1219,79 @@ export async function createSubProjectFromRange(
 
   await db.projects.add(subProject);
   return subProject;
+}
+
+const BOX_KEYS = ['x', 'y', 'w', 'h'] as const;
+function cleanBox(b: any): BoxRect {
+  const out: any = {};
+  for (const k of BOX_KEYS) out[k] = Number(b?.[k]) || 0;
+  return out as BoxRect;
+}
+
+/**
+ * Restore a project losslessly from the <script id="guide-source"> block, if present.
+ * Returns null when the block is absent or not a valid project of this format.
+ */
+async function tryImportEmbeddedSource(html: string): Promise<GuideProject | null> {
+  const m = html.match(/<script\b[^>]*\bid=["']guide-source["'][^>]*>([\s\S]*?)<\/script>/i);
+  if (!m) return null;
+  let src: any;
+  try {
+    src = JSON.parse(m[1]);
+  } catch {
+    return null;
+  }
+  if (!src || src.format !== SOURCE_FORMAT || !Array.isArray(src.steps) || !Array.isArray(src.screenshots)) {
+    return null;
+  }
+
+  const projectId = generateId();
+  const idMap = new Map<string, string>();
+  for (const sh of src.screenshots) {
+    const blob = typeof sh.dataUrl === 'string' && sh.dataUrl.startsWith('data:')
+      ? dataUrlToBlob(sh.dataUrl)
+      : createPlaceholderBlob(String(sh.filename || 'image'));
+    const asset = await addScreenshot(
+      projectId,
+      blob,
+      String(sh.filename || '1.png'),
+      Array.isArray(sh.blurBoxes) ? sh.blurBoxes.map(cleanBox) : [],
+      Array.isArray(sh.maskBoxes) ? sh.maskBoxes.map(cleanBox) : []
+    );
+    idMap.set(String(sh.id), asset.id);
+  }
+
+  const steps: GuideStep[] = src.steps.map((s: any) => {
+    const step: GuideStep = {
+      id: generateId(),
+      screenshotId: idMap.get(String(s.screenshotId)) || '',
+      act: (s.act as ActionType) || 'click',
+      box: cleanBox(s.box),
+      en: s.en || '',
+      ru: s.ru || '',
+    };
+    if (s.chapterTitle !== undefined && s.chapterTitle !== null) step.chapterTitle = s.chapterTitle;
+    if (s.cursorPos && typeof s.cursorPos === 'object') {
+      step.cursorPos = { x: Number(s.cursorPos.x) || 0, y: Number(s.cursorPos.y) || 0 };
+    }
+    if (s.voiceDraft !== undefined && s.voiceDraft !== null) step.voiceDraft = s.voiceDraft;
+    if (s.keepBlur !== undefined && s.keepBlur !== null) step.keepBlur = Boolean(s.keepBlur);
+    return step;
+  });
+
+  const project: GuideProject = {
+    id: projectId,
+    pageTitle: src.pageTitle || '',
+    titleEn: src.titleEn || '',
+    titleRu: src.titleRu || '',
+    subEn: src.subEn || '',
+    subRu: src.subRu || '',
+    defaultLang: src.defaultLang === 'ru' ? 'ru' : 'en',
+    globalBlurBoxes: Array.isArray(src.globalBlurBoxes) ? src.globalBlurBoxes.map(cleanBox) : [],
+    steps,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  await db.projects.add(project);
+  return project;
 }

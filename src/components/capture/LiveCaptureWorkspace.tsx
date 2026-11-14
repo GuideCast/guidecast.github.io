@@ -453,7 +453,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
     try {
       const mediaStream = await navigator.mediaDevices.getDisplayMedia({
         video: {
-          displaySurface: 'window',
+          displaySurface: 'browser',
           frameRate: { ideal: 30, max: 60 },
         },
         audio: false,
