@@ -32,12 +32,14 @@ import {
   ZoomIn,
   ZoomOut,
   PanelLeftOpen,
+  PlayCircle,
 } from 'lucide-react';
 
 import type { ActionType, BoxRect, GuideProject, GuideStep, ScreenshotAsset } from './types/guide';
 import {
   addScreenshot,
   createDemoProject,
+  DEMO_GUIDE_URL,
   createProject,
   db,
   deleteProject,
@@ -280,8 +282,8 @@ export default function App() {
       setActiveTab('editor');
       showStatus(
         uiLang === 'en'
-          ? 'Demo guide created with pre-configured screenshots!'
-          : 'Демо-гайд с встроенными скриншотами создан!'
+          ? 'Demo opened: a guide about this tool, built with this tool.'
+          : 'Демо открыто: гайд об этом инструменте, сделанный в нём же.'
       );
     } catch (err) {
       console.error(err);
@@ -807,6 +809,16 @@ export default function App() {
               </div>
 
               <div className="flex flex-wrap gap-3">
+                <a
+                  href={DEMO_GUIDE_URL}
+                  target="_blank"
+                  rel="noopener"
+                  data-testid="watch-how-to"
+                  className="bg-amber-300 text-slate-900 hover:bg-amber-200 px-5 py-2.5 rounded-xl font-semibold text-base flex items-center gap-2 shadow transition"
+                >
+                  <PlayCircle className="w-5 h-5" />
+                  {UI_TEXT[uiLang].dashboard.watchHowTo}
+                </a>
                 <button
                   onClick={handleCreateNewProject}
                   className="bg-white text-teal-900 hover:bg-teal-50 px-5 py-2.5 rounded-xl font-semibold text-base flex items-center gap-2 shadow transition"

@@ -158,18 +158,21 @@ export async function deleteScreenshot(id: string): Promise<void> {
   await db.screenshots.delete(id);
 }
 
+/** Public URL of the built-in tutorial: a guide about this tool, made with this tool. */
+export const DEMO_GUIDE_URL = `${import.meta.env.BASE_URL}demo/how-to-guide.html`;
+
 /**
- * Creates the built-in demo project from a short real guide (Microsoft Fabric screenshots)
- * shipped as public/demo/fabric-demo.html. Imported through the regular HTML importer.
+ * Creates the built-in demo project: an 18-step guide about how to use this tool
+ * (public/demo/how-to-guide.html, a "project for editing" export with embedded sources).
+ * Imported through the regular HTML importer, so it opens in the editor like any guide.
  */
 export async function createDemoProject(): Promise<GuideProject> {
-  const url = `${import.meta.env.BASE_URL}demo/fabric-demo.html`;
-  const response = await fetch(url);
+  const response = await fetch(DEMO_GUIDE_URL);
   if (!response.ok) {
     throw new Error(`Could not load demo guide (${response.status})`);
   }
   const text = await response.text();
   // Dynamic import avoids a circular dependency (importerExporter imports this module).
   const { importFromStandaloneHtml } = await import('../services/importerExporter');
-  return importFromStandaloneHtml(new File([text], 'fabric-demo.html', { type: 'text/html' }));
+  return importFromStandaloneHtml(new File([text], 'how-to-guide.html', { type: 'text/html' }));
 }
