@@ -94,6 +94,7 @@ const translations = {
     chooseTabTitle: 'Which tab do you want to record?',
     chooseTabDesc: 'Pick the Chrome tab with your program, not this guide tool. Chrome switches to it and this recorder stays on top.',
     chooseTabBtn: 'Choose the tab to record',
+    switchHint: 'Recording started. If Chrome did not open your program, click its tab now. This recorder stays on top.',
     orPasteImages: 'Or paste screenshots (Ctrl+V) or upload image files at any time.',
     previewIdle: 'The live picture of your program appears here after you start recording.',
     voiceTip: 'Dictate step captions by voice',
@@ -195,6 +196,7 @@ const translations = {
     chooseTabTitle: 'Какую вкладку записывать?',
     chooseTabDesc: 'Выберите вкладку Chrome с вашей программой, а не этот редактор гайдов. Chrome перейдёт на неё, а пульт останется поверх.',
     chooseTabBtn: 'Выбрать вкладку для записи',
+    switchHint: 'Запись началась. Если Chrome не открыл вашу программу сам, нажмите на её вкладку. Пульт останется поверх.',
     orPasteImages: 'Или вставляйте скриншоты (Ctrl+V) и загружайте картинки в любой момент.',
     previewIdle: 'Живая картинка вашей программы появится здесь, когда вы начнёте запись.',
     voiceTip: 'Диктовать подписи шагов голосом',
@@ -311,6 +313,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
   // --- Document Picture-in-Picture State ---
   const [pipWindow, setPipWindow] = useState<Window | null>(null);
   const [showInAppMiniRemote, setShowInAppMiniRemote] = useState(false);
+  const [switchHint, setSwitchHint] = useState(false);
   const [pipViewMode, setPipViewMode] = useState<PipViewMode>('live');
 
   // --- Active Draw Mode & Interaction ---
@@ -443,6 +446,15 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
     }
   }, [stream]);
 
+  // The hint is only useful while this tab is still in front.
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') setSwitchHint(false);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
+
   // --- Register PiP Close Listener ---
   useEffect(() => {
     const unsubscribe = onPipClose(() => {
@@ -455,16 +467,34 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
   // --- Screen Capture Management ---
   const handleStartCapture = async () => {
     try {
+      // CaptureController lets us ask Chrome to switch to the chosen tab right after "Share".
+      const CaptureCtor = (window as any).CaptureController;
+      const controller = CaptureCtor ? new CaptureCtor() : null;
       const mediaStream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           displaySurface: 'browser',
           frameRate: { ideal: 30, max: 60 },
         },
         audio: false,
-      });
+        ...(controller ? { controller } : {}),
+      } as DisplayMediaStreamOptions);
+      try {
+        // Must run in the same task as the resolved promise, before any further await.
+        controller?.setFocusBehavior?.('focus-captured-surface');
+        (window as any).__gctFocusResult = 'requested';
+      } catch (e: any) {
+        (window as any).__gctFocusResult = 'error: ' + (e?.name || e);
+      }
 
       setStream(mediaStream);
       setIsCapturingScreen(true);
+      // If Chrome stayed on this tab (it does not always follow the focus request), tell the teacher what to do.
+      window.setTimeout(() => {
+        if (document.visibilityState === 'visible') {
+          setSwitchHint(true);
+          window.setTimeout(() => setSwitchHint(false), 20000);
+        }
+      }, 1500);
       setPipViewMode('live');
 
       const track = mediaStream.getVideoTracks()[0];
@@ -1274,6 +1304,17 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
             )}
           </div>
         </div>
+
+        {switchHint && isCapturingScreen && (
+          <div
+            data-testid="switch-hint"
+            className={`shrink-0 mb-1.5 rounded-lg border px-3 py-2 text-sm font-semibold ${
+              isDarkMode ? 'border-amber-600 bg-amber-950/50 text-amber-200' : 'border-amber-400 bg-amber-50 text-amber-900'
+            }`}
+          >
+            {text.switchHint}
+          </div>
+        )}
 
         {/* Item 2: Viewport Area (NO aspect-video! flex-1 with min-h-[140px] so it NEVER overflows) */}
         <div

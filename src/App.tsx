@@ -105,7 +105,11 @@ function toPlainText(html: string): string {
 
 export default function App() {
   const [uiLang, setUiLang] = useState<UiLang>(() => getSavedUiLang());
-  const [isWelcomeOpen, setIsWelcomeOpen] = useState<boolean>(() => !hasSeenWelcomeTour());
+  const [isWelcomeOpen, setIsWelcomeOpen] = useState<boolean>(
+    () => !hasSeenWelcomeTour() && !new URLSearchParams(window.location.search).has('new')
+  );
+  const [isTourOpen, setIsTourOpen] = useState<boolean>(false);
+  const autoCreateDoneRef = useRef<boolean>(false);
   const [projects, setProjects] = useState<GuideProject[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [activeProject, setActiveProject] = useState<GuideProject | null>(null);
@@ -146,6 +150,18 @@ export default function App() {
   // Load project list on mount
   useEffect(() => {
     loadProjects();
+  }, []);
+
+  // "Now try it yourself" at the end of the tour links to ./?new=1: start a new guide on the Record tab.
+  useEffect(() => {
+    if (autoCreateDoneRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('new')) return;
+    autoCreateDoneRef.current = true;
+    params.delete('new');
+    const rest = params.toString();
+    window.history.replaceState(null, '', window.location.pathname + (rest ? '?' + rest : '') + window.location.hash);
+    void handleCreateNewProject();
   }, []);
 
   // Sync dark mode class
@@ -795,7 +811,31 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col py-4 sm:py-5 px-3 sm:px-5 lg:px-6 w-full max-w-[1920px] mx-auto">
-        {!activeProject ? (
+        {isTourOpen ? (
+          /* ================= TOUR VIEW: the how-to guide inside the app, with a way back ================= */
+          <div className="flex flex-col flex-1 gap-3" data-testid="tour-view">
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => setIsTourOpen(false)}
+                data-testid="tour-back"
+                className="bg-teal-700 hover:bg-teal-800 text-white px-5 py-2.5 rounded-xl font-semibold text-base flex items-center gap-2 shadow transition"
+              >
+                <ArrowLeft className="w-5 h-5" />
+                {uiLang === 'en' ? 'Back to home' : 'Назад на главную'}
+              </button>
+              <span className="text-sm text-slate-600 dark:text-slate-300">
+                {uiLang === 'en'
+                  ? 'Click the red box in each picture to go to the next step.'
+                  : 'Нажимайте на красную рамку на картинке, чтобы перейти к следующему шагу.'}
+              </span>
+            </div>
+            <iframe
+              title={uiLang === 'en' ? 'How to make a step-by-step guide' : 'Как сделать пошаговый гайд'}
+              src={DEMO_GUIDE_URL}
+              className="w-full flex-1 min-h-[75vh] rounded-xl border border-slate-300 dark:border-slate-700 bg-white"
+            />
+          </div>
+        ) : !activeProject ? (
           /* ================= DASHBOARD VIEW ================= */
           <div className="space-y-6">
             <div className="bg-gradient-to-r from-teal-800 to-cyan-900 text-white p-8 rounded-2xl shadow-md flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
@@ -809,16 +849,14 @@ export default function App() {
               </div>
 
               <div className="flex flex-wrap gap-3">
-                <a
-                  href={DEMO_GUIDE_URL}
-                  target="_blank"
-                  rel="noopener"
+                <button
+                  onClick={() => setIsTourOpen(true)}
                   data-testid="watch-how-to"
                   className="bg-amber-300 text-slate-900 hover:bg-amber-200 px-5 py-2.5 rounded-xl font-semibold text-base flex items-center gap-2 shadow transition"
                 >
                   <PlayCircle className="w-5 h-5" />
                   {UI_TEXT[uiLang].dashboard.watchHowTo}
-                </a>
+                </button>
                 <button
                   onClick={handleCreateNewProject}
                   className="bg-white text-teal-900 hover:bg-teal-50 px-5 py-2.5 rounded-xl font-semibold text-base flex items-center gap-2 shadow transition"
