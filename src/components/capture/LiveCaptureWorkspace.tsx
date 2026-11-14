@@ -19,6 +19,7 @@ import {
   Type,
   ListFilter,
   Move,
+  Maximize2,
   ArrowDown,
   Sparkles,
   Layers,
@@ -43,6 +44,7 @@ import {
 } from '../../services/speechService';
 import {
   isPipSupported,
+  isPipOpen,
   openPipWindow,
   closePipWindow,
   onPipClose,
@@ -94,6 +96,8 @@ const translations = {
     chooseTabTitle: 'Which tab do you want to record?',
     chooseTabDesc: 'Pick the Chrome tab with your program, not this guide tool. Chrome switches to it and this recorder stays on top.',
     chooseTabBtn: 'Choose the tab to record',
+    recorderNextMsg: 'Recording started. Click Show floating recorder, then open your program tab.',
+    resizeHint: 'Too small? Drag the window edge or corner to make it bigger.',
     switchHint: 'Recording started. If Chrome did not open your program, click its tab now. This recorder stays on top.',
     orPasteImages: 'Or paste screenshots (Ctrl+V) or upload image files at any time.',
     previewIdle: 'The live picture of your program appears here after you start recording.',
@@ -196,6 +200,8 @@ const translations = {
     chooseTabTitle: 'Какую вкладку записывать?',
     chooseTabDesc: 'Выберите вкладку Chrome с вашей программой, а не этот редактор гайдов. Chrome перейдёт на неё, а пульт останется поверх.',
     chooseTabBtn: 'Выбрать вкладку для записи',
+    recorderNextMsg: 'Запись началась. Нажмите «Показать плавающий пульт», затем откройте вкладку с программой.',
+    resizeHint: 'Мелко? Потяните за край или угол окна, чтобы увеличить.',
     switchHint: 'Запись началась. Если Chrome не открыл вашу программу сам, нажмите на её вкладку. Пульт останется поверх.',
     orPasteImages: 'Или вставляйте скриншоты (Ctrl+V) и загружайте картинки в любой момент.',
     previewIdle: 'Живая картинка вашей программы появится здесь, когда вы начнёте запись.',
@@ -314,6 +320,21 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
   const [pipWindow, setPipWindow] = useState<Window | null>(null);
   const [showInAppMiniRemote, setShowInAppMiniRemote] = useState(false);
   const [switchHint, setSwitchHint] = useState(false);
+  const [resizeHintHidden, setResizeHintHidden] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('gct_pip_resize_hint_hidden') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const hideResizeHint = () => {
+    setResizeHintHidden(true);
+    try {
+      localStorage.setItem('gct_pip_resize_hint_hidden', '1');
+    } catch {
+      // ignore
+    }
+  };
   const [pipViewMode, setPipViewMode] = useState<PipViewMode>('live');
 
   // --- Active Draw Mode & Interaction ---
@@ -444,7 +465,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
       pipVideoRef.current.srcObject = stream;
       pipVideoRef.current.play().catch((err) => console.warn('PiP Video play error:', err));
     }
-  }, [stream]);
+  }, [stream, pipWindow]);
 
   // The hint is only useful while this tab is still in front.
   useEffect(() => {
@@ -465,7 +486,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
   }, []);
 
   // --- Screen Capture Management ---
-  const handleStartCapture = async () => {
+  const handleStartCapture = async (openRecorderAfter = false) => {
     try {
       // CaptureController lets us ask Chrome to switch to the chosen tab right after "Share".
       const CaptureCtor = (window as any).CaptureController;
@@ -478,12 +499,23 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
         audio: false,
         ...(controller ? { controller } : {}),
       } as DisplayMediaStreamOptions);
+      // Chrome keeps the click activation for about 5 seconds. While it is still active we can both
+      // follow the captured tab AND open the floating recorder. If the teacher was slow, the recorder
+      // cannot open any more, so we stay on this tab and ask for one more click.
+      const activationLeft = Boolean(navigator.userActivation?.isActive);
       try {
         // Must run in the same task as the resolved promise, before any further await.
-        controller?.setFocusBehavior?.('focus-captured-surface');
-        (window as any).__gctFocusResult = 'requested';
+        controller?.setFocusBehavior?.(activationLeft || !openRecorderAfter ? 'focus-captured-surface' : 'no-focus-change');
+        (window as any).__gctFocusResult = activationLeft ? 'focus-captured-surface' : 'no-focus-change';
       } catch (e: any) {
         (window as any).__gctFocusResult = 'error: ' + (e?.name || e);
+      }
+      if (openRecorderAfter && isPipSupported() && !isPipOpen()) {
+        if (activationLeft) {
+          void handleTogglePip();
+        } else {
+          showBanner(text.recorderNextMsg);
+        }
       }
 
       setStream(mediaStream);
@@ -546,7 +578,13 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
     }
 
     if (isPipSupported()) {
-      const win = await openPipWindow({ width: 540, height: 680 });
+      // Comfortable default (about 420x560), never bigger than the screen.
+      const availW = window.screen?.availWidth || 1280;
+      const availH = window.screen?.availHeight || 800;
+      const win = await openPipWindow({
+        width: Math.max(320, Math.min(420, availW - 40)),
+        height: Math.max(420, Math.min(560, availH - 80)),
+      });
       if (win) {
         // Apply theme to PiP window document body
         try {
@@ -575,21 +613,23 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
   // tab and the always-on-top recorder is already there. Without Document PiP
   // (Firefox, Safari) we ask for the tab directly and show the in-page recorder.
   const handleStartRecording = async () => {
+    if (!isCapturingScreen) {
+      // One click: the tab picker belongs to THIS window (so Chrome switches to the chosen tab after
+      // "Share"), and the floating recorder opens right after the choice, from the same click.
+      if (!isPipSupported()) setShowInAppMiniRemote(true);
+      await handleStartCapture(true);
+      return;
+    }
     if (isPipSupported()) {
-      if (!pipWindow) {
-        await handleTogglePip();
-      } else {
+      if (pipWindow) {
         try {
           pipWindow.focus();
         } catch {
           // ignore
         }
+      } else {
+        await handleTogglePip();
       }
-      return;
-    }
-    setShowInAppMiniRemote(true);
-    if (!isCapturingScreen) {
-      await handleStartCapture();
     }
   };
 
@@ -1305,6 +1345,26 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
           </div>
         </div>
 
+        {isPip && !resizeHintHidden && (
+          <div
+            data-testid="resize-hint"
+            className={`shrink-0 mb-1.5 flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${
+              isDarkMode ? 'border-slate-700 bg-slate-900 text-slate-300' : 'border-slate-200 bg-slate-50 text-slate-600'
+            }`}
+          >
+            <Maximize2 className="w-4 h-4 shrink-0 text-emerald-500" />
+            <span className="flex-1">{text.resizeHint}</span>
+            <button
+              type="button"
+              onClick={hideResizeHint}
+              className="p-0.5 rounded hover:bg-slate-200/60 dark:hover:bg-slate-700"
+              title={lang === 'en' ? 'Hide this tip' : 'Скрыть подсказку'}
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {switchHint && isCapturingScreen && (
           <div
             data-testid="switch-hint"
@@ -1363,7 +1423,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
               <button
                 type="button"
                 data-testid="choose-tab"
-                onClick={handleStartCapture}
+                onClick={() => handleStartCapture(false)}
                 className="h-12 px-5 flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-base font-bold shadow transition"
               >
                 <Video className="w-5 h-5" />
