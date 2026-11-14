@@ -81,11 +81,24 @@ const ACTION_DEFAULTS: Record<'en' | 'ru', Record<ActionType, { prefix: string; 
 
 const translations = {
   en: {
+    flow1Title: 'Share your program tab',
+    flow1Desc: 'In the browser dialog choose the "Tab" (Chrome tab) with your program, not this page.',
+    flowSharing: 'Sharing is on',
+    flow2Title: 'Open the floating recorder',
+    flow2Desc: 'A small window on top of your program: snap steps without coming back here. Required to record in another tab.',
+    flow2Locked: 'Start step 1 first',
+    flow2NoPip: 'This browser cannot float over other tabs. A recorder panel will open on this page instead.',
+    flow3Title: 'Snap each step',
+    flow3Desc: 'In the floating recorder (or in the preview here) drag over the button you click. Each snap is a step. You can dictate captions.',
+    flow3Badge: 'Drag over a button = one step',
+    previewIdle: 'The live preview of your program will appear here after step 1.',
+    voiceTip: 'Dictate step captions by voice',
+    langTip: 'Switch interface and dictation language',
     startCapture: 'Start Screen Capture',
     stopCapture: 'Stop Capture',
-    changeSource: '🔄 Change Shared Tab / Window',
-    popOutPip: '🪟 Pop Out Floating Recorder',
-    popOutPipActive: '🪟 Floating Remote Active',
+    changeSource: 'Change Shared Tab / Window',
+    popOutPip: 'Pop Out Floating Recorder',
+    popOutPipActive: 'Floating Recorder Is Open',
     popOutPipTip: 'Opens an always-on-top mini window that floats over your target web app',
     headerTip: 'Tip: Choose "Browser Tab" or "Window" in the prompt to avoid a mirror loop.',
     voice: 'Voice',
@@ -112,7 +125,7 @@ const translations = {
 
     // Notice banner when stream active but PiP not open
     pipWarningTitle: '⚠️ Working in another browser tab?',
-    pipWarningBody: 'Click "🪟 Pop Out Floating Recorder (Always on Top)" BEFORE switching tabs — otherwise you won\'t see the capture controls while inside your other tab!',
+    pipWarningBody: 'Click "🪟 Pop Out Floating Recorder (Always on Top)" BEFORE switching tabs ,  otherwise you won\'t see the capture controls while inside your other tab!',
     openPipNow: '🪟 Pop Out Floating Recorder (Stay on Top)',
 
     // Modes & actions
@@ -180,11 +193,24 @@ const translations = {
     pipFallbackMsg: 'Document Picture-in-Picture is not supported in this browser. Opened floating remote on page instead.',
   },
   ru: {
+    flow1Title: 'Поделитесь вкладкой с программой',
+    flow1Desc: 'В окне браузера выберите «Вкладку» (вкладку Chrome) с вашей программой, а не эту страницу.',
+    flowSharing: 'Экран передаётся',
+    flow2Title: 'Откройте плавающий пульт',
+    flow2Desc: 'Маленькое окно остаётся поверх вашей программы, шаги снимаются без возврата сюда. Без него запись в другой вкладке невозможна.',
+    flow2Locked: 'Сначала выполните шаг 1',
+    flow2NoPip: 'Этот браузер не умеет показывать окно поверх других вкладок. Пульт откроется на этой странице.',
+    flow3Title: 'Снимайте каждый шаг',
+    flow3Desc: 'В плавающем пульте (или в превью здесь) обведите мышью кнопку, на которую нажимаете. Каждый снимок это шаг. Подпись можно надиктовать.',
+    flow3Badge: 'Обвели кнопку = один шаг',
+    previewIdle: 'Живое превью вашей программы появится здесь после шага 1.',
+    voiceTip: 'Диктовать подписи шагов голосом',
+    langTip: 'Переключить язык интерфейса и диктовки',
     startCapture: 'Начать захват экрана',
     stopCapture: 'Остановить захват',
     changeSource: '🔄 Сменить окно / вкладку',
-    popOutPip: '🪟 Плавающий пульт PiP',
-    popOutPipActive: '🪟 Плавающий пульт активен',
+    popOutPip: 'Открыть плавающий пульт',
+    popOutPipActive: 'Плавающий пульт открыт',
     popOutPipTip: 'Открывает окно поверх всех вкладок браузера и программ',
     headerTip: 'Совет: выберите «Вкладка» или «Окно», чтобы избежать эффекта зеркала.',
     voice: 'Голос',
@@ -211,7 +237,7 @@ const translations = {
 
     // Notice banner when stream active but PiP not open
     pipWarningTitle: '⚠️ Работаете в другой вкладке браузера?',
-    pipWarningBody: 'Нажмите «🪟 Плавающий пульт (Поверх всех окон)» ДО переключения во вкладку — иначе вы не увидите кнопки записи внутри другой вкладки!',
+    pipWarningBody: 'Нажмите «🪟 Плавающий пульт (Поверх всех окон)» ДО переключения во вкладку ,  иначе вы не увидите кнопки записи внутри другой вкладки!',
     openPipNow: '🪟 Плавающий пульт (Поверх всех окон)',
 
     // Modes & actions
@@ -231,7 +257,7 @@ const translations = {
     finishAndEdit: '🏁 Завершить и открыть Редактор ({n})',
     backToLive: '▶️ Вернуться к эфиру для следующего шага',
     stepCapturedTitle: '✅ Шаг #{n} сохранён!',
-    boxEditorHint: '💡 Тяните рамку для сдвига, за края — для размера, или сдвиньте ↖ курсор, чтобы не закрывать буквы.',
+    boxEditorHint: '💡 Тяните рамку для сдвига, за края ,  для размера, или сдвиньте ↖ курсор, чтобы не закрывать буквы.',
     refineBoxHint: '✂️ Обведите кнопку заново для уточнения рамки',
     livePreviewHint: '✂️ Выделите область на превью для шага',
 
@@ -1622,147 +1648,211 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
         </div>
       )}
 
-      {/* Header Toolbar */}
-      <header
-        className={`flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 border-b transition ${
-          isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
-        }`}
-      >
-        {/* Left: Stream Control & Status */}
-        <div className="flex items-center gap-3">
-          {!isCapturingScreen ? (
-            <button
-              onClick={handleStartCapture}
-              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-3.5 py-2 rounded-lg shadow-lg shadow-emerald-950/20 transition transform active:scale-95"
-            >
-              <Video className="w-4 h-4" />
-              <span>{text.startCapture}</span>
-            </button>
-          ) : (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleStopCapture}
-                className="flex items-center gap-2 bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs px-3 py-2 rounded-lg shadow-lg shadow-rose-950/20 transition transform active:scale-95"
-              >
-                <VideoOff className="w-4 h-4" />
-                <span>{text.stopCapture}</span>
-              </button>
+      {/* Prominent 3-step recording flow */}
+      {(() => {
+        const pipOpen = !!pipWindow || showInAppMiniRemote;
+        const currentStep = !isCapturingScreen ? 1 : !pipOpen ? 2 : 3;
+        const done = [isCapturingScreen, pipOpen, false];
+        const pipSupported = isPipSupported();
+        const secondaryBtn = `flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition ${
+          isDarkMode
+            ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+            : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+        }`;
+        const cardClass = (n: number) =>
+          `relative flex flex-col gap-1.5 rounded-xl border-2 p-3 transition ${
+            currentStep === n
+              ? isDarkMode
+                ? 'border-emerald-500 bg-emerald-500/10 shadow-lg shadow-emerald-950/30'
+                : 'border-emerald-500 bg-emerald-50 shadow-md'
+              : isDarkMode
+              ? 'border-slate-800 bg-slate-900'
+              : 'border-slate-200 bg-white'
+          }`;
+        const badge = (n: number) => (
+          <span
+            className={`flex items-center justify-center w-10 h-10 rounded-full text-xl font-extrabold shrink-0 ${
+              done[n - 1]
+                ? 'bg-emerald-600 text-white'
+                : currentStep === n
+                ? 'bg-emerald-500 text-white'
+                : isDarkMode
+                ? 'bg-slate-800 text-slate-300'
+                : 'bg-slate-200 text-slate-600'
+            }`}
+          >
+            {done[n - 1] ? <Check className="w-6 h-6" strokeWidth={3} /> : n}
+          </span>
+        );
+        const titleClass = `text-lg font-bold leading-tight ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`;
+        const descClass = `text-[15px] leading-snug ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`;
+        const bigBtn =
+          'mt-auto w-full h-12 flex items-center justify-center gap-2 rounded-lg text-base font-bold transition disabled:opacity-50 disabled:cursor-not-allowed';
+        const pipDisabled = !isCapturingScreen;
+        return (
+          <section
+            className={`px-4 pt-3 pb-2 border-b ${
+              isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'
+            }`}
+          >
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+              {/* Step 1 */}
+              <div className={cardClass(1)}>
+                <div className="flex items-center gap-3">
+                  {badge(1)}
+                  <h3 className={titleClass}>{text.flow1Title}</h3>
+                </div>
+                <p className={descClass}>{text.flow1Desc}</p>
+                {!isCapturingScreen ? (
+                  <button
+                    onClick={handleStartCapture}
+                    className={`${bigBtn} bg-emerald-600 hover:bg-emerald-500 text-white shadow`}
+                  >
+                    <Video className="w-5 h-5" />
+                    <span>{text.startCapture}</span>
+                  </button>
+                ) : (
+                  <div
+                    className={`${bigBtn} border ${
+                      isDarkMode
+                        ? 'border-emerald-700 text-emerald-300 bg-emerald-950/40'
+                        : 'border-emerald-300 text-emerald-700 bg-emerald-50'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-5 h-5" />
+                    <span>{text.flowSharing}</span>
+                    {videoResolution && (
+                      <span className="font-mono text-xs font-normal opacity-80">
+                        {videoResolution.width}×{videoResolution.height}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
 
-              <button
-                onClick={handleRestartCapture}
-                className={`flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border transition ${
-                  isDarkMode
-                    ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
-                }`}
-                title="Re-pick the shared window or browser tab"
-              >
-                <RefreshCw className="w-3.5 h-3.5 text-amber-500" />
-                <span>{text.changeSource}</span>
-              </button>
-            </div>
-          )}
-
-          {isCapturingScreen && (
-            <div
-              className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg border ${
-                isDarkMode
-                  ? 'bg-slate-800/80 text-slate-300 border-slate-700'
-                  : 'bg-slate-100 text-slate-700 border-slate-200'
-              }`}
-            >
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
-              </span>
-              <span>{text.liveBadge}</span>
-              {videoResolution && (
-                <span
-                  className={`font-mono text-[11px] ${
-                    isDarkMode ? 'text-slate-400' : 'text-slate-500'
+              {/* Step 2 */}
+              <div className={cardClass(2)}>
+                <div className="flex items-center gap-3">
+                  {badge(2)}
+                  <h3 className={titleClass}>{text.flow2Title}</h3>
+                </div>
+                <p className={descClass}>{text.flow2Desc}</p>
+                <button
+                  onClick={handleTogglePip}
+                  disabled={pipDisabled}
+                  title={text.popOutPipTip}
+                  className={`${bigBtn} ${
+                    pipOpen
+                      ? 'bg-sky-600 hover:bg-sky-500 text-white'
+                      : currentStep === 2
+                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow'
+                      : isDarkMode
+                      ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
                   }`}
                 >
-                  ({videoResolution.width}×{videoResolution.height})
-                </span>
-              )}
+                  <Square className="w-5 h-5" />
+                  <span>{pipOpen ? text.popOutPipActive : text.popOutPip}</span>
+                </button>
+                {pipDisabled && (
+                  <p className={`text-xs ${isDarkMode ? 'text-amber-300' : 'text-amber-700'}`}>
+                    {text.flow2Locked}
+                  </p>
+                )}
+                {!pipDisabled && !pipOpen && !pipSupported && (
+                  <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                    {text.flow2NoPip}
+                  </p>
+                )}
+              </div>
+
+              {/* Step 3 */}
+              <div className={cardClass(3)}>
+                <div className="flex items-center gap-3">
+                  {badge(3)}
+                  <h3 className={titleClass}>{text.flow3Title}</h3>
+                </div>
+                <p className={descClass}>{text.flow3Desc}</p>
+                <div
+                  className={`mt-auto w-full h-12 flex items-center justify-center gap-2 rounded-lg border text-sm font-semibold ${
+                    isDarkMode
+                      ? 'border-slate-700 bg-slate-950/60 text-slate-300'
+                      : 'border-slate-200 bg-slate-50 text-slate-600'
+                  }`}
+                >
+                  <Scissors className="w-5 h-5 text-emerald-500" />
+                  <span>{text.flow3Badge}</span>
+                </div>
+              </div>
             </div>
-          )}
 
-          <div
-            className={`hidden xl:flex items-center gap-1.5 text-xs ${
-              isDarkMode ? 'text-slate-400' : 'text-slate-500'
-            }`}
-          >
-            <Shield className="w-3.5 h-3.5 text-sky-500" />
-            <span>{text.headerTip}</span>
-          </div>
-        </div>
+            {/* Secondary controls */}
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              {isCapturingScreen && (
+                <>
+                  <button
+                    onClick={handleStopCapture}
+                    className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs px-3 py-2 rounded-lg transition"
+                  >
+                    <VideoOff className="w-4 h-4" />
+                    <span>{text.stopCapture}</span>
+                  </button>
+                  <button onClick={handleRestartCapture} className={secondaryBtn} title={text.changeSource}>
+                    <RefreshCw className="w-3.5 h-3.5 text-amber-500" />
+                    <span>{text.changeSource}</span>
+                  </button>
+                  <div
+                    className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg border ${
+                      isDarkMode
+                        ? 'bg-slate-800/80 text-slate-300 border-slate-700'
+                        : 'bg-slate-100 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                    </span>
+                    <span>{text.liveBadge}</span>
+                  </div>
+                </>
+              )}
 
-        {/* Center / Right: Remote & Mode Toggles */}
-        <div className="flex items-center gap-2">
-          {/* Picture-in-Picture Remote Button */}
-          <button
-            onClick={handleTogglePip}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition ${
-              pipWindow || showInAppMiniRemote
-                ? 'bg-sky-600 text-white border-sky-500 shadow-[0_0_12px_rgba(2,132,199,0.5)]'
-                : isDarkMode
-                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
-            }`}
-            title={text.popOutPipTip}
-          >
-            <Square className="w-4 h-4 text-sky-500" />
-            <span>{pipWindow || showInAppMiniRemote ? text.popOutPipActive : text.popOutPip}</span>
-          </button>
+              <div className="flex-1" />
 
-          {/* Voice Input Button */}
-          <button
-            onClick={handleToggleVoice}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition ${
-              isVoiceActive
-                ? 'bg-rose-600 text-white border-rose-500 animate-pulse shadow-[0_0_12px_rgba(225,29,72,0.5)]'
-                : isDarkMode
-                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
-            }`}
-            title="Speech Dictation"
-          >
-            {isVoiceActive ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4 text-slate-400" />}
-            <span>{isVoiceActive ? text.listening : text.voice}</span>
-          </button>
+              <button
+                onClick={handleToggleVoice}
+                className={
+                  isVoiceActive
+                    ? 'flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition bg-rose-600 text-white border-rose-500 animate-pulse'
+                    : secondaryBtn
+                }
+                title={text.voiceTip}
+              >
+                {isVoiceActive ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4 text-slate-400" />}
+                <span>{isVoiceActive ? text.listening : text.voice}</span>
+              </button>
 
-          {/* Language Switcher (EN / RU) */}
-          <button
-            onClick={() => {
-              const next = lang === 'en' ? 'ru' : 'en';
-              setLang(next);
-              setVoiceLang(next === 'ru' ? 'ru-RU' : 'en-US');
-            }}
-            className={`px-2.5 py-2 rounded-lg text-xs font-bold border transition ${
-              isDarkMode
-                ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
-            }`}
-            title="Switch UI & Dictation language"
-          >
-            {lang.toUpperCase()}
-          </button>
+              <button
+                onClick={() => {
+                  const next = lang === 'en' ? 'ru' : 'en';
+                  setLang(next);
+                  setVoiceLang(next === 'ru' ? 'ru-RU' : 'en-US');
+                }}
+                className={secondaryBtn}
+                title={text.langTip}
+              >
+                {lang.toUpperCase()}
+              </button>
 
-          {/* Manual File Upload Button */}
-          <label
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border cursor-pointer transition ${
-              isDarkMode
-                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
-            }`}
-          >
-            <Upload className="w-4 h-4 text-emerald-500" />
-            <span>{text.uploadImage}</span>
-            <input type="file" accept="image/*" multiple onChange={handleFileInputChange} className="hidden" />
-          </label>
-        </div>
-      </header>
+              <label className={`${secondaryBtn} cursor-pointer`}>
+                <Upload className="w-4 h-4 text-emerald-500" />
+                <span>{text.uploadImage}</span>
+                <input type="file" accept="image/*" multiple onChange={handleFileInputChange} className="hidden" />
+              </label>
+            </div>
+          </section>
+        );
+      })()}
 
       {/* Main Workspace Body */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
@@ -1772,52 +1862,6 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
             isDarkMode ? 'bg-slate-950' : 'bg-slate-50'
           }`}
         >
-          {/* NOTICE BANNER: Video is running, but PiP remote is NOT open yet! */}
-          {isCapturingScreen && !pipWindow && !showInAppMiniRemote && (
-            <div className="bg-gradient-to-r from-amber-500/15 via-sky-500/15 to-emerald-500/15 border-2 border-amber-500/80 rounded-xl p-4 mb-3 shadow-lg flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <div className="p-2.5 bg-amber-500 text-slate-950 rounded-lg shrink-0 mt-0.5 shadow">
-                  <Square className="w-5 h-5 font-bold" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-amber-600 dark:text-amber-200 mb-0.5">
-                    {text.pipWarningTitle}
-                  </h4>
-                  <p
-                    className={`text-xs leading-relaxed max-w-2xl ${
-                      isDarkMode ? 'text-slate-200' : 'text-slate-700'
-                    }`}
-                  >
-                    {text.pipWarningBody}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
-                <button
-                  onClick={handleTogglePip}
-                  className="flex-1 md:flex-initial flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs px-4 py-2.5 rounded-lg shadow-lg shadow-sky-950/20 transition transform hover:scale-[1.02]"
-                >
-                  <Square className="w-4 h-4 text-sky-200" />
-                  <span>{text.openPipNow}</span>
-                </button>
-
-                <button
-                  onClick={handleRestartCapture}
-                  className={`flex items-center justify-center gap-1.5 border text-xs font-semibold px-3 py-2.5 rounded-lg transition ${
-                    isDarkMode
-                      ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                      : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
-                  }`}
-                  title="Change shared tab or window"
-                >
-                  <RefreshCw className="w-4 h-4 text-amber-500" />
-                  <span>{text.changeSource}</span>
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Action Mode Toolbar */}
           {isCapturingScreen && (
             <div className="flex items-center justify-between pb-3">
@@ -1969,148 +2013,15 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
                 )}
               </div>
             ) : (
-              /* ONBOARDING CARDS: 3 Clear Steps Before Capture */
-              <div className="flex flex-col items-center justify-center p-6 max-w-4xl w-full">
-                <div className="text-center mb-6">
-                  <h3
-                    className={`text-xl font-bold mb-1.5 flex items-center justify-center gap-2 ${
-                      isDarkMode ? 'text-slate-100' : 'text-slate-800'
-                    }`}
-                  >
-                    <Monitor className="w-6 h-6 text-emerald-500" />
-                    <span>{lang === 'en' ? 'Live Screen Capture & Guide Recording' : 'Живая запись руководства с экрана'}</span>
-                  </h3>
-                  <p
-                    className={`text-xs max-w-xl mx-auto ${
-                      isDarkMode ? 'text-slate-400' : 'text-slate-500'
-                    }`}
-                  >
-                    {lang === 'en'
-                      ? 'Follow 3 simple steps below to record your BI workflow effortlessly without mirror loops or lost windows.'
-                      : 'Следуйте 3 простым шагам ниже, чтобы комфортно записать инструкцию без зеркального эффекта и путаницы в окнах.'}
-                  </p>
-                </div>
-
-                {/* 3 Step Cards Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full mb-6">
-                  {/* Card 1 */}
-                  <div
-                    className={`border rounded-xl p-4 flex flex-col justify-between shadow-md relative overflow-hidden group hover:border-emerald-500/60 transition ${
-                      isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200'
-                    }`}
-                  >
-                    <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/10 rounded-bl-full pointer-events-none" />
-                    <div>
-                      <div className="flex items-center gap-2 mb-2.5">
-                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-bold shadow">
-                          1
-                        </span>
-                        <h4 className="text-xs font-bold text-emerald-600 dark:text-emerald-300">
-                          {text.step1Title}
-                        </h4>
-                      </div>
-                      <p
-                        className={`text-[11px] leading-relaxed mb-4 ${
-                          isDarkMode ? 'text-slate-300' : 'text-slate-600'
-                        }`}
-                      >
-                        {text.step1Desc}
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={handleStartCapture}
-                      className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2.5 px-3 rounded-lg shadow-md transition transform group-hover:scale-[1.02]"
-                    >
-                      <Video className="w-4 h-4" />
-                      <span>{text.startCaptureBtn}</span>
-                    </button>
-                  </div>
-
-                  {/* Card 2 */}
-                  <div
-                    className={`border rounded-xl p-4 flex flex-col justify-between shadow-md relative overflow-hidden group hover:border-sky-500/60 transition ${
-                      isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200'
-                    }`}
-                  >
-                    <div className="absolute top-0 right-0 w-16 h-16 bg-sky-500/10 rounded-bl-full pointer-events-none" />
-                    <div>
-                      <div className="flex items-center gap-2 mb-2.5">
-                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-sky-600 text-white text-xs font-bold shadow">
-                          2
-                        </span>
-                        <h4 className="text-xs font-bold text-sky-600 dark:text-sky-300">
-                          {text.step2Title}
-                        </h4>
-                      </div>
-                      <p
-                        className={`text-[11px] leading-relaxed mb-4 ${
-                          isDarkMode ? 'text-slate-300' : 'text-slate-600'
-                        }`}
-                      >
-                        {text.step2Desc}
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={handleTogglePip}
-                      className={`w-full flex items-center justify-center gap-2 border font-semibold text-xs py-2.5 px-3 rounded-lg transition ${
-                        isDarkMode
-                          ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
-                      }`}
-                    >
-                      <Square className="w-4 h-4 text-sky-500" />
-                      <span>{text.popOutPip}</span>
-                    </button>
-                  </div>
-
-                  {/* Card 3 */}
-                  <div
-                    className={`border rounded-xl p-4 flex flex-col justify-between shadow-md relative overflow-hidden group hover:border-rose-500/60 transition ${
-                      isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200'
-                    }`}
-                  >
-                    <div className="absolute top-0 right-0 w-16 h-16 bg-rose-500/10 rounded-bl-full pointer-events-none" />
-                    <div>
-                      <div className="flex items-center gap-2 mb-2.5">
-                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-rose-600 text-white text-xs font-bold shadow">
-                          3
-                        </span>
-                        <h4 className="text-xs font-bold text-rose-600 dark:text-rose-300">
-                          {text.step3Title}
-                        </h4>
-                      </div>
-                      <p
-                        className={`text-[11px] leading-relaxed mb-4 ${
-                          isDarkMode ? 'text-slate-300' : 'text-slate-600'
-                        }`}
-                      >
-                        {text.step3Desc}
-                      </p>
-                    </div>
-
-                    <div
-                      className={`text-[11px] font-medium p-2 rounded-lg border text-center ${
-                        isDarkMode
-                          ? 'bg-slate-950/80 text-slate-400 border-slate-800'
-                          : 'bg-slate-50 text-slate-600 border-slate-200'
-                      }`}
-                    >
-                      ✂️ {lang === 'en' ? 'Drag over button = Instant step!' : 'Обвёл кнопку = Готовый шаг!'}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Bottom Alternative Info */}
-                <div
-                  className={`text-[11px] flex items-center gap-2 ${
-                    isDarkMode ? 'text-slate-500' : 'text-slate-400'
-                  }`}
-                >
+              <div className="flex flex-col items-center justify-center p-6 text-center gap-3 max-w-md">
+                <Monitor className={`w-12 h-12 ${isDarkMode ? 'text-slate-600' : 'text-slate-300'}`} />
+                <p className={`text-base ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                  {text.previewIdle}
+                </p>
+                <p className={`text-xs flex items-center gap-2 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
                   <Upload className="w-3.5 h-3.5" />
                   <span>{text.orPasteImages}</span>
-                </div>
+                </p>
               </div>
             )}
 
@@ -2345,26 +2256,6 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
               >
                 {text.stepEmptyPromptDesc}
               </p>
-              <div
-                className={`flex flex-col gap-1.5 w-full text-[11px] p-3 rounded-lg border text-left ${
-                  isDarkMode
-                    ? 'bg-slate-950 text-slate-400 border-slate-800'
-                    : 'bg-slate-50 text-slate-600 border-slate-200'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-emerald-500 font-bold">1.</span>
-                  <span>{text.tipDrag}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-emerald-500 font-bold">2.</span>
-                  <span>{text.tipClick}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-emerald-500 font-bold">3.</span>
-                  <span>{text.tipVoice}</span>
-                </div>
-              </div>
             </div>
           )}
         </div>
