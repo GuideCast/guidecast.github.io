@@ -15,10 +15,13 @@
 ## Где что
 - `src/App.tsx` (~2.5k строк): дашборд проектов, вкладки Capture / Editor / Player, редактор шага.
 - `src/components/capture/LiveCaptureWorkspace.tsx`: getDisplayMedia, PiP-пульт, «ножницы», вставка Ctrl+V.
+  Порядок записи: сначала пульт (PiP), вкладка выбирается из пульта. Элементы в окне PiP из другого `window`:
+  не использовать `instanceof HTMLElement` и подобное.
 - `src/components/common/InteractiveBoxEditor.tsx`: рамка с 8 ручками, курсор, блюр-боксы.
 - `src/services/importerExporter.ts`: импорт папки `steps.json`, импорт/экспорт HTML-плеера (шаблон плеера внутри строки).
 - `src/services/canvasRenderer.ts`: блюр, маска, вырез рамки из блюра, JPEG 0.85, ширина 1600.
-- `src/db/database.ts`: схема Dexie + демо-проект (`createDemoProject`).
+- `src/db/database.ts`: схема Dexie + демо-проект (`createDemoProject`, файл `public/demo/how-to-guide.html`,
+  гайд о самом инструменте; пересборка: `scripts/demo/README.md`).
 - `src/i18n/uiTranslations.ts`: строки UI EN/RU (часть строк всё ещё захардкожена в компонентах).
 
 ## Правила
@@ -31,3 +34,4 @@
 ## Точки отката
 - `v0.1.0-gemini` (2026-11-14): состояние, собранное с Gemini, до ревью Claude.
 - `v0.2.0` (2026-11-14, после push): баги, простой интерфейс, настоящее демо.
+- `v0.3.0` (2026-11-14): запись в одно действие, демо про сам инструмент.
