@@ -84,12 +84,12 @@ export const AiAndPrivacyModal: React.FC<AiAndPrivacyModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold tracking-tight">
-                {uiLang === 'en' ? 'AI Assistant & Privacy Protection' : 'ИИ-Ассистент и Защита Приватности'}
+                {uiLang === 'en' ? 'Privacy & AI' : 'Приватность и ИИ'}
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-sm text-slate-600 dark:text-slate-300">
                 {uiLang === 'en'
-                  ? 'Global data blur, keyless batch translation, and token-saving micro-crops'
-                  : 'Сквозное размытие данных, пакетный перевод без ключей и микро-кропы с экономией токенов'}
+                  ? 'Blur the same area on every screenshot, and get help writing captions'
+                  : 'Размытие одной и той же области на всех скриншотах и помощь с подписями'}
               </p>
             </div>
           </div>
@@ -104,41 +104,41 @@ export const AiAndPrivacyModal: React.FC<AiAndPrivacyModalProps> = ({
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-900/80 px-6 pt-2 gap-2 text-xs font-semibold">
+        <div className="flex flex-wrap border-b border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-900/80 px-6 pt-2 gap-2 text-sm font-semibold">
           <button
             onClick={() => setActiveTab('privacy')}
             className={`pb-2.5 px-3 border-b-2 flex items-center gap-2 transition ${
               activeTab === 'privacy'
-                ? 'border-teal-600 text-teal-600 dark:text-teal-400 font-bold'
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                ? 'border-teal-600 text-teal-800 dark:text-teal-300 font-bold'
+                : 'border-transparent text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <Shield className="w-4 h-4" />
-            {uiLang === 'en' ? '1. 🛡️ Privacy & Global Blur' : '1. 🛡️ Приватность и Сквозной Блюр'}
+            {uiLang === 'en' ? '1. Privacy: blur on all screenshots' : '1. Приватность: размытие на всех скриншотах'}
           </button>
 
           <button
             onClick={() => setActiveTab('batch-ai')}
             className={`pb-2.5 px-3 border-b-2 flex items-center gap-2 transition ${
               activeTab === 'batch-ai'
-                ? 'border-teal-600 text-teal-600 dark:text-teal-400 font-bold'
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                ? 'border-teal-600 text-teal-800 dark:text-teal-300 font-bold'
+                : 'border-transparent text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <Layers className="w-4 h-4" />
-            {uiLang === 'en' ? '2. 📋 Keyless Batch AI (0 tokens)' : '2. 📋 Пакетный ИИ без ключей (0 токенов)'}
+            {uiLang === 'en' ? '2. Captions for all steps (no key)' : '2. Подписи для всех шагов (без ключа)'}
           </button>
 
           <button
             onClick={() => setActiveTab('gemini-crop')}
             className={`pb-2.5 px-3 border-b-2 flex items-center gap-2 transition ${
               activeTab === 'gemini-crop'
-                ? 'border-teal-600 text-teal-600 dark:text-teal-400 font-bold'
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                ? 'border-teal-600 text-teal-800 dark:text-teal-300 font-bold'
+                : 'border-transparent text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <Wand2 className="w-4 h-4" />
-            {uiLang === 'en' ? '3. ✨ Auto-describe with Micro-Crop (BYOK Gemini)' : '3. ✨ Авто-описание по микро-кропу (BYOK Gemini)'}
+            {uiLang === 'en' ? '3. AI captions (your own Gemini key)' : '3. Подписи с ИИ (ваш ключ Gemini)'}
           </button>
         </div>
 
@@ -566,7 +566,7 @@ function BatchAiTab({
             <p className="text-[11px] text-slate-500">
               {uiLang === 'en'
                 ? 'Click "Apply" to instantly update all steps and chapters.'
-                : 'Нажмите «Применить» — все шаги и главы мгновенно обновятся.'}
+                : 'Нажмите «Применить», и все шаги и главы обновятся.'}
             </p>
           </div>
         </div>
@@ -1223,8 +1223,8 @@ function GeminiMicroCropTab({
         </h4>
         <p className="text-[11px] text-slate-500 mb-3">
           {uiLang === 'en'
-            ? 'Enter button label or screen text — template engine instantly crafts clean instruction with <b>...</b> tags:'
-            : 'Введите название кнопки или надпись с экрана — шаблонизатор мгновенно сформирует чистую инструкцию с тегами <b>...</b>:'}
+            ? 'Enter the button label or screen text. A clean caption with <b>...</b> tags is created for you:'
+            : 'Введите название кнопки или надпись с экрана. Подпись с тегами <b>...</b> будет создана автоматически:'}
         </p>
 
         <div className="flex flex-wrap items-center gap-2">
