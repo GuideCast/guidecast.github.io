@@ -152,13 +152,28 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
 
-  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
-  const [renderRect, setRenderRect] = useState<{ left: number; top: number; width: number; height: number }>({
+  const [naturalSize, setNaturalSizeRaw] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  const [renderRect, setRenderRectRaw] = useState<{ left: number; top: number; width: number; height: number }>({
     left: 0,
     top: 0,
     width: 0,
     height: 0,
   });
+  // Only update when values really change: a fresh object with equal values used to
+  // re-trigger the effects below and caused an endless render loop for cached images.
+  const setNaturalSize = useCallback((next: { width: number; height: number }) => {
+    setNaturalSizeRaw((prev) => (prev.width === next.width && prev.height === next.height ? prev : next));
+  }, []);
+  const setRenderRect = useCallback((next: { left: number; top: number; width: number; height: number }) => {
+    setRenderRectRaw((prev) =>
+      Math.abs(prev.left - next.left) < 0.5 &&
+      Math.abs(prev.top - next.top) < 0.5 &&
+      Math.abs(prev.width - next.width) < 0.5 &&
+      Math.abs(prev.height - next.height) < 0.5
+        ? prev
+        : next
+    );
+  }, []);
 
   const [dragState, setDragState] = useState<DragState>({ type: 'none' });
 
