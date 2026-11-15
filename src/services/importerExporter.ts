@@ -606,7 +606,8 @@ h1 small{display:block;font-weight:400;color:var(--muted);font-size:13px}
 .seg button{border:0;background:var(--card);color:var(--muted);padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
 .stage{position:relative;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.06)}
-.shotbox{display:block}
+.shotbox{display:flex;justify-content:center;background:#0b0d0f}
+.shotbox .shot{flex:none;width:100%}
 .shot{position:relative;line-height:0;overflow:hidden;user-select:none}
 .shot img{width:100%;height:auto;display:block}
 .hl{position:absolute;border:3px solid var(--hl);border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.2);pointer-events:none;animation:pulse 1.4s ease-in-out infinite;transition:all .2s ease}
@@ -709,7 +710,7 @@ body.fs .speech{margin-top:4px}
         <svg class="cursor" id="cur" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 2l15 9.5-6.5 1.6 3.7 6.9-3 1.6-3.7-6.9L4.5 19z" fill="#fff" stroke="#111" stroke-width="1.5" stroke-linejoin="round"/></svg>
       </div>
     </div>
-    <div class="panel">
+    <div class="panel" id="panel">
       <div class="num" id="num"></div>
       <div class="txt">
         <div id="chapterBadgeContainer"></div>
@@ -850,22 +851,29 @@ function render() {
   $("chlbl").textContent = t.chapters;
   $("modelbl").textContent = trainerMode ? t.trainerOn : t.trainerOff;
 
-  fit();
   speechSync();
+  fit();
   document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", b.dataset.lang === lang));
 }
 
 function fit() {
   const sh = $("shot"), im = $("img");
-  if (!document.body.classList.contains("fs")) {
-    sh.style.width = sh.style.height = "";
-    return;
-  }
-  if (!im.naturalWidth) {
-    im.onload = fit;
-    return;
-  }
+  im.onload = fit;
+  if (!im.naturalWidth) return;
   const ar = im.naturalWidth / im.naturalHeight, box = $("shotbox");
+  if (!document.body.classList.contains("fs")) {
+    // Keep screenshot + caption + nav inside the viewport: cap the screenshot height.
+    sh.style.width = sh.style.height = "";
+    const top = box.getBoundingClientRect().top + window.scrollY;
+    const below = $("panel").offsetHeight + document.querySelector("nav").offsetHeight + 36;
+    const maxH = Math.max(180, window.innerHeight - top - below);
+    const natH = box.clientWidth / ar;
+    if (natH > maxH) {
+      sh.style.width = (maxH * ar) + "px";
+      sh.style.height = maxH + "px";
+    }
+    return;
+  }
   const w = Math.min(box.clientWidth, box.clientHeight * ar);
   sh.style.width = w + "px";
   sh.style.height = (w / ar) + "px";
