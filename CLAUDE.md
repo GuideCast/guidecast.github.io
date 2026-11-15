@@ -1,4 +1,4 @@
-# guide-creation-tool: контекст для ИИ-сессий
+# GuideCast (репозиторий guidecast.github.io, прежнее имя Guide Creation Tool): контекст для ИИ-сессий
 
 Читать первым в любой сессии (Claude Code, Gemini и т.п.), потом `CHANGELOG.md`.
 
@@ -6,7 +6,7 @@
 Клиентское веб-приложение (React 19 + Vite + Tailwind + Dexie/IndexedDB) для сборки
 пошаговых HTML-гайдов из скриншотов: запись экрана, рамка/курсор/блюр/маска, подписи EN/RU,
 экспорт в один автономный HTML. Аудитория: преподаватели NOVA IMS (BI, Microsoft Fabric),
-в том числе нетехнические, 30–60 лет. Опубликовано: https://stanislavsidorovich.github.io/guide-creation-tool/
+в том числе нетехнические, 30–60 лет. Опубликовано: https://guidecast.github.io/ (организация GitHub GuideCast, репо GuideCast/guidecast.github.io; со старого адреса stanislavsidorovich.github.io/guide-creation-tool/ стоит страница о переезде без автоперехода)
 (деплой GitHub Actions на каждый push в `main`, `.github/workflows/deploy.yml`).
 
 Предшественник: `fabric-guide-tool/` (Python `build_guide.py` + `template.html` + `steps.json`,
@@ -20,7 +20,7 @@
 - `src/components/common/InteractiveBoxEditor.tsx`: рамка с 8 ручками, курсор, блюр-боксы.
 - `src/services/importerExporter.ts`: импорт папки `steps.json`, импорт/экспорт HTML-плеера (шаблон плеера внутри строки).
 - `src/services/canvasRenderer.ts`: блюр, маска, вырез рамки из блюра, JPEG 0.85, ширина 1600.
-- `src/db/database.ts`: схема Dexie + демо-проект (`createDemoProject`, файл `public/demo/how-to-guide.html`,
+- `src/db/database.ts`: схема Dexie (имя БД `GuideCreationToolDB` и ключи `gct_*` НЕ переименовывать: пропадут гайды у людей) + демо-проект (`createDemoProject`, файл `public/demo/how-to-guide.html`,
   гайд о самом инструменте; пересборка: `scripts/demo/README.md`).
 - `src/i18n/uiTranslations.ts`: строки UI EN/RU (часть строк всё ещё захардкожена в компонентах).
 

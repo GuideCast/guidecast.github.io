@@ -1,5 +1,5 @@
 /**
- * UI Translations and localization helpers for Guide Creation Tool.
+ * UI Translations and localization helpers for GuideCast.
  * Default language: English ('en'). Can be switched to Russian ('ru') at any time.
  */
 
@@ -73,12 +73,12 @@ export function resetWelcomeTour(): void {
 }
 
 /**
- * Complete UI dictionary for Guide Creation Tool in English and Russian.
+ * Complete UI dictionary for GuideCast in English and Russian.
  */
 export const UI_TEXT = {
   en: {
     header: {
-      appName: 'Guide Creation Tool',
+      appName: 'GuideCast',
       tagline: 'Step-by-step guides from screenshots',
       projects: 'Projects',
       newProject: 'New Guide',
@@ -126,7 +126,7 @@ export const UI_TEXT = {
       snapStep: '📸 Snap Step',
       captureTipTitle: '💡 How to record seamlessly:',
       captureTip1: 'In the browser dialog, select your target app window or "Browser Tab" (e.g. Power BI, Cloud Console, SQL tool).',
-      captureTip2: 'Avoid selecting the Guide Creation Tool window itself to prevent mirror feedback.',
+      captureTip2: 'Avoid selecting the GuideCast window itself to prevent mirror feedback.',
       captureTip3: 'Open the Floating Recorder (PiP) to mark clicks and dictate instructions while staying inside your program.',
       clipboardPasteHint: 'Or press Win + Shift + S in any program, then Ctrl + V here to add a step.',
       pipActiveBanner: 'Floating Recorder is currently open. You can mark steps directly in the floating window!',
@@ -256,7 +256,7 @@ export const UI_TEXT = {
   },
   ru: {
     header: {
-      appName: 'Guide Creation Tool',
+      appName: 'GuideCast',
       tagline: 'Пошаговые гайды из скриншотов',
       projects: 'Проекты',
       newProject: 'Новый гайд',
@@ -304,7 +304,7 @@ export const UI_TEXT = {
       snapStep: '📸 Сделать снимок шага',
       captureTipTitle: '💡 Как удобно записывать шаги:',
       captureTip1: 'В системном окне браузера выберите вкладку «Вкладка браузера» (BI-система, консоль AWS/Azure, SQL) или окно конкретной программы.',
-      captureTip2: 'Не выбирайте вкладку самого Guide Creation Tool во избежание «эффекта зеркального коридора».',
+      captureTip2: 'Не выбирайте вкладку самого GuideCast во избежание «эффекта зеркального коридора».',
       captureTip3: 'Откройте плавающий рекордер (PiP), чтобы размечать клики и надиктовывать инструкции прямо поверх целевой программы.',
       clipboardPasteHint: 'Или нажмите Win + Shift + S в любой программе и Ctrl + V здесь для мгновенной вставки шага.',
       pipActiveBanner: 'Плавающее окно записи открыто. Вы можете размечать шаги прямо в мини-окне поверх других программ!',

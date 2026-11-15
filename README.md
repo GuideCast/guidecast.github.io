@@ -1,4 +1,4 @@
-# Guide Creation Tool 🚀
+# GuideCast 🚀
 ### Универсальный конструктор интерактивных пошаговых руководств и тренажёров
 
 [![React](https://img.shields.io/badge/React-19-61dafb.svg?style=flat-square&logo=react)](https://react.dev/)
@@ -8,7 +8,7 @@
 [![Dexie](https://img.shields.io/badge/Dexie-IndexedDB-008080.svg?style=flat-square)](https://dexie.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 
-**Guide Creation Tool** — это мощное, полностью клиентское веб-приложение для мгновенного создания интерактивных обучающих руководств, документации и тренажёров для **любого программного обеспечения, SaaS-платформ, веб-сервисов и операционных систем**.
+**GuideCast** — это мощное, полностью клиентское веб-приложение для мгновенного создания интерактивных обучающих руководств, документации и тренажёров для **любого программного обеспечения, SaaS-платформ, веб-сервисов и операционных систем**.
 
 Приложение работает локально прямо в браузере: все скриншоты и метаданные сохраняются в защищённую локальную базу данных IndexedDB (Dexie.js), не требуют серверной части и экспортируются в **одиночный автономный HTML-файл**, готовый для публикации или передачи пользователям.
 
@@ -64,7 +64,7 @@
 ## 🛠️ Архитектура и структура проекта
 
 ```text
-guide-creation-tool/
+guidecast.github.io/
 ├── .github/
 │   └── workflows/
 │       └── deploy.yml             # GitHub Actions CI/CD для GitHub Pages
@@ -104,8 +104,8 @@ guide-creation-tool/
 
 1. Склонируйте репозиторий:
    ```bash
-   git clone https://github.com/StanislavSidorovich/guide-creation-tool.git
-   cd guide-creation-tool
+   git clone https://github.com/GuideCast/guidecast.github.io.git
+   cd guidecast.github.io
    ```
 
 2. Установите зависимости:
