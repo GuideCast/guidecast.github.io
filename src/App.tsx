@@ -1571,7 +1571,15 @@ export default function App() {
       </main>
 
       <footer className="py-3 text-center text-xs text-slate-500 dark:text-slate-400" data-testid="app-footer">
-        Made by Stanislav Sidorovich
+        Made by{' '}
+        <a
+          href="https://www.linkedin.com/in/stanislavsidorovich/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline underline-offset-2 hover:text-teal-700 dark:hover:text-teal-300"
+        >
+          Stanislav Sidorovich
+        </a>
       </footer>
 
       {/* Ai and Privacy Modal */}
