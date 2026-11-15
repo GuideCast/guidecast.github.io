@@ -656,6 +656,13 @@ body.fs .panel nav{margin:0;gap:8px;flex:none}
 body.fs nav button.nav{padding:7px 16px;min-width:0}
 body.fs #fsx{display:block;position:fixed;top:8px;right:8px;z-index:5;opacity:.65;background:var(--card)}
 body.fs #fsx:hover{opacity:1}
+.speech{display:none;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px}
+.speech.ready{display:flex}
+.say{padding:7px 14px;font-size:14px;font-weight:600}
+.say.speaking{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.say svg{width:18px;height:18px;flex:none}
+.speech label{font-size:13px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+body.fs .speech{margin-top:4px}
 @media (max-width:640px){
   .wrap{padding:10px 12px}
   nav button.nav{padding:10px 14px;min-width:80px}
@@ -708,6 +715,10 @@ body.fs #fsx:hover{opacity:1}
         <div id="chapterBadgeContainer"></div>
         <span class="chip" id="chip"></span>
         <p id="text"></p>
+        <div class="speech" id="speech">
+          <button class="fsbtn say" id="say" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg><span id="saylbl"></span></button>
+          <label><input type="checkbox" id="autoread"> <span id="autolbl"></span></label>
+        </div>
       </div>
     </div>
   </div>
@@ -734,7 +745,8 @@ const I18N = {
     exit:"Exit full page",
     click:"Click",type:"Type",drag:"Drag",select:"Select",scroll:"Scroll",look:"Notice",step:"Step",
     chapters:"Chapters",trainerOn:"Trainer Mode (Active)",trainerOff:"Overview Mode",
-    jumpTo:"Jump to chapter..."
+    jumpTo:"Jump to chapter...",
+    say:"Listen",stopSay:"Stop",auto:"Read steps aloud automatically"
   },
   ru:{
     title:"Интерактивная инструкция",sub:"Пошаговое интерактивное руководство",
@@ -745,7 +757,8 @@ const I18N = {
     exit:"Свернуть",
     click:"Нажать",type:"Ввести",drag:"Протянуть",select:"Выбрать",scroll:"Прокрутить",look:"Обратите внимание",step:"Шаг",
     chapters:"Разделы",trainerOn:"Режим тренажёра (вкл)",trainerOff:"Режим обзора",
-    jumpTo:"Перейти к разделу..."
+    jumpTo:"Перейти к разделу...",
+    say:"Слушать",stopSay:"Стоп",auto:"Читать шаги вслух автоматически"
   }
 };
 
@@ -838,6 +851,7 @@ function render() {
   $("modelbl").textContent = trainerMode ? t.trainerOn : t.trainerOff;
 
   fit();
+  speechSync();
   document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", b.dataset.lang === lang));
 }
 
@@ -965,6 +979,71 @@ $("lsave").onclick = () => {
   link.remove();
   setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
 };
+
+// Read the step aloud (browser speech synthesis, no libraries, no keys).
+const SPEECH_OK = "speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined";
+let voices = [], speaking = false, spokenKey = "", touched = false, autoRead = false;
+try { autoRead = localStorage.getItem("autoread") === "1"; } catch(e){}
+function pickVoice(l) {
+  const list = voices.filter(v => (v.lang || "").split("_").join("-").toLowerCase().indexOf(l) === 0);
+  if (!list.length) return null;
+  return list.find(v => /natural|neural|online/i.test(v.name)) || list.find(v => v.localService) || list[0];
+}
+function plainText(html) {
+  const d = document.createElement("div");
+  d.innerHTML = html;
+  return (d.textContent || "").split(" ").filter(Boolean).join(" ").trim();
+}
+function setSayUi() {
+  const t = I18N[lang];
+  $("say").classList.toggle("speaking", speaking);
+  $("saylbl").textContent = speaking ? t.stopSay : t.say;
+}
+function stopSpeech() {
+  if (!SPEECH_OK) return;
+  speechSynthesis.cancel();
+  speaking = false;
+  setSayUi();
+}
+function speak() {
+  const v = SPEECH_OK && pickVoice(lang);
+  if (!v) return;
+  stopSpeech();
+  const u = new SpeechSynthesisUtterance(plainText(STEPS[i][lang] || STEPS[i].en || STEPS[i].ru || ""));
+  u.voice = v;
+  u.lang = v.lang;
+  u.onend = u.onerror = () => { if (speaking) { speaking = false; setSayUi(); } };
+  speaking = true;
+  setSayUi();
+  setTimeout(() => speechSynthesis.speak(u), 60);
+}
+function speechSync() {
+  if (!SPEECH_OK) return;
+  const ready = !!pickVoice(lang);
+  $("speech").classList.toggle("ready", ready);
+  $("autolbl").textContent = I18N[lang].auto;
+  $("autoread").checked = autoRead;
+  setSayUi();
+  const key = i + ":" + lang;
+  if (key !== spokenKey) {
+    spokenKey = key;
+    stopSpeech();
+    if (ready && autoRead && touched) speak();
+  }
+}
+if (SPEECH_OK) {
+  voices = speechSynthesis.getVoices();
+  speechSynthesis.addEventListener("voiceschanged", () => { voices = speechSynthesis.getVoices(); speechSync(); });
+  $("say").onclick = () => { touched = true; if (speaking) stopSpeech(); else speak(); };
+  $("autoread").onchange = e => {
+    autoRead = e.target.checked;
+    try { localStorage.setItem("autoread", autoRead ? "1" : "0"); } catch(e){}
+    if (autoRead) { touched = true; speak(); }
+  };
+  document.addEventListener("pointerdown", () => { touched = true; }, true);
+  document.addEventListener("keydown", () => { touched = true; }, true);
+  window.addEventListener("pagehide", () => speechSynthesis.cancel());
+}
 
 function go(n) {
   i = Math.max(0, Math.min(STEPS.length - 1, n));

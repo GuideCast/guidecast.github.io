@@ -10,7 +10,6 @@ import {
   ArrowLeft,
   Check,
   Layers,
-  Sparkles,
   ChevronUp,
   ChevronDown,
   ChevronLeft,
@@ -147,9 +146,24 @@ export default function App() {
     }
   }, [activeProject?.id, activeProject?.steps.length]);
 
-  // Load project list on mount
+  // Load project list on mount. On the very first launch the Fabric example guide is added to
+  // "Your guides" so the list is not empty (only once: deleting it does not bring it back).
   useEffect(() => {
-    loadProjects();
+    (async () => {
+      try {
+        const existing = await listProjects();
+        const seeded = localStorage.getItem('gct_example_seeded_v1') === '1';
+        if (existing.length === 0 && !seeded && !new URLSearchParams(window.location.search).has('new')) {
+          localStorage.setItem('gct_example_seeded_v1', '1');
+          await createDemoProject();
+        } else if (!seeded) {
+          localStorage.setItem('gct_example_seeded_v1', '1');
+        }
+      } catch (e) {
+        console.warn('Could not add the example guide:', e);
+      }
+      await loadProjects();
+    })();
   }, []);
 
   // "Now try it yourself" at the end of the tour links to ./?new=1: start a new guide on the Record tab.
@@ -745,9 +759,12 @@ export default function App() {
 
           {/* How to Use Modal Trigger */}
           <button
-            onClick={() => setIsWelcomeOpen(true)}
+            onClick={() => {
+              setActiveProjectId(null);
+              setIsTourOpen(true);
+            }}
             className="text-sm font-medium px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition"
-            title={uiLang === 'en' ? 'Show the 3-step tour again' : 'Показать тур из 3 шагов'}
+            title={uiLang === 'en' ? 'Interactive guide: how to use this tool' : 'Интерактивный гайд: как пользоваться инструментом'}
           >
             <HelpCircle className="w-4 h-4" />
             <span>{uiLang === 'en' ? 'How it works' : 'Как это работает'}</span>
@@ -920,14 +937,6 @@ export default function App() {
                     </>
                   )}
                 </div>
-
-                <button
-                  onClick={handleCreateDemo}
-                  className="bg-teal-950/50 hover:bg-teal-950/80 text-white px-5 py-2.5 rounded-xl font-semibold text-base flex items-center gap-2 border border-white/30 transition"
-                >
-                  <Sparkles className="w-5 h-5" />
-                  {UI_TEXT[uiLang].dashboard.createDemo}
-                </button>
               </div>
             </div>
 
@@ -1561,6 +1570,10 @@ export default function App() {
         )}
       </main>
 
+      <footer className="py-3 text-center text-xs text-slate-500 dark:text-slate-400" data-testid="app-footer">
+        Made by Stanislav Sidorovich
+      </footer>
+
       {/* Ai and Privacy Modal */}
       {activeProject && (
         <AiAndPrivacyModal
@@ -1587,7 +1600,10 @@ export default function App() {
           saveUiLang(l);
         }}
         onStartNew={handleCreateNewProject}
-        onOpenDemo={handleCreateDemo}
+        onOpenDemo={() => {
+          setActiveProjectId(null);
+          setIsTourOpen(true);
+        }}
       />
     </div>
   );

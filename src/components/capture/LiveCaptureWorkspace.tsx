@@ -84,9 +84,9 @@ const ACTION_DEFAULTS: Record<'en' | 'ru', Record<ActionType, { prefix: string; 
 const translations = {
   en: {
     flow1Title: 'Start recording',
-    flow1Desc: 'A small floating recorder opens. In it, click "Choose the tab to record" and pick the tab with your program. Chrome takes you there, and the recorder stays on top.',
+    flow1Desc: 'Chrome asks which tab to record: pick the tab with your program and click Share. Chrome takes you there, and a small floating recorder opens on top.',
     startRecording: 'Start recording',
-    recorderWaiting: 'Now click "Choose the tab to record" in the floating recorder',
+    recorderWaiting: 'Choose the tab to record',
     flowSharing: 'Recording',
     showRecorder: 'Show floating recorder',
     flowNoPip: 'This browser cannot float a window over other tabs, so the recorder opens on this page.',
@@ -188,9 +188,9 @@ const translations = {
   },
   ru: {
     flow1Title: 'Начните запись',
-    flow1Desc: 'Откроется маленький плавающий пульт. Нажмите в нём «Выбрать вкладку для записи» и укажите вкладку с вашей программой. Chrome перейдёт туда, а пульт останется поверх.',
+    flow1Desc: 'Chrome спросит, какую вкладку записывать: выберите вкладку с программой и нажмите «Поделиться». Chrome перейдёт туда, и сверху откроется маленький плавающий пульт.',
     startRecording: 'Начать запись',
-    recorderWaiting: 'Теперь нажмите «Выбрать вкладку для записи» в плавающем пульте',
+    recorderWaiting: 'Выбрать вкладку для записи',
     flowSharing: 'Идёт запись',
     showRecorder: 'Показать плавающий пульт',
     flowNoPip: 'Этот браузер не умеет показывать окно поверх других вкладок, поэтому пульт откроется на этой странице.',
