@@ -997,7 +997,13 @@ export default function App() {
       {/* Header */}
       <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shadow-sm w-full">
         <div className="w-full max-w-[1920px] mx-auto px-3 sm:px-5 lg:px-6 py-3 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setActiveProjectId(null)}
+          title={uiLang === 'en' ? 'Back to all guides' : 'К списку гайдов'}
+          data-testid="header-home"
+          className="flex items-center gap-3 text-left rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+        >
           <div className="w-9 h-9 rounded-lg bg-teal-600 text-white flex items-center justify-center font-bold text-lg shadow">
             G
           </div>
@@ -1009,7 +1015,7 @@ export default function App() {
               {UI_TEXT[uiLang].header.tagline}
             </p>
           </div>
-        </div>
+        </button>
 
         <div className="flex items-center gap-2.5">
           {activeProject && (
