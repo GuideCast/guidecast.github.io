@@ -33,6 +33,8 @@ import {
   PanelLeftOpen,
   PlayCircle,
   ImagePlus,
+  Undo2,
+  Redo2,
 } from 'lucide-react';
 
 import type { ActionType, BoxRect, GuideProject, GuideStep, ScreenshotAsset } from './types/guide';
@@ -87,7 +89,17 @@ import {
 type ActiveTab = 'capture' | 'editor' | 'player';
 type EditorDrawTool = 'target' | 'blur' | 'globalBlur' | 'mask';
 
-const MORE_TOOLS_KEY = 'gct_editor_more_tools_open';
+type EditEntry = {
+  kind: 'step' | 'asset' | 'project';
+  targetId: string;
+  /** Step to show again when the edit is undone or redone. */
+  stepId: string;
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+  t: number;
+};
+
+const MORE_TOOLS_KEY ='gct_editor_more_tools_open';
 
 /** Plain-text preview of a caption that may contain simple HTML like <b>. */
 function toPlainText(html: string): string {
@@ -556,8 +568,168 @@ export default function App() {
     await updateProject(activeProject.id, { steps });
   }
 
+  // ---- Undo / redo for edits in the step editor (in memory, up to 50 actions) ----
+  const activeProjectRef = useRef<GuideProject | null>(null);
+  activeProjectRef.current = activeProject;
+  const screenshotsRef = useRef<ScreenshotAsset[]>([]);
+  screenshotsRef.current = screenshots;
+  const historyRef = useRef<{ undo: EditEntry[]; redo: EditEntry[] }>({ undo: [], redo: [] });
+  const [, setHistoryVersion] = useState<number>(0);
+  const bumpHistory = () => setHistoryVersion((v) => v + 1);
+
+  useEffect(() => {
+    historyRef.current = { undo: [], redo: [] };
+    bumpHistory();
+  }, [activeProjectId]);
+
+  function recordEdit(entry: Omit<EditEntry, 't'>) {
+    const h = historyRef.current;
+    const now = Date.now();
+    const last = h.undo[h.undo.length - 1];
+    // Typing a caption is many tiny edits: merge them into one undo step
+    if (
+      last &&
+      entry.kind === 'step' &&
+      last.kind === 'step' &&
+      last.targetId === entry.targetId &&
+      now - last.t < 1000 &&
+      Object.keys(entry.after).every((k) => k === 'en' || k === 'ru') &&
+      Object.keys(last.after).every((k) => k === 'en' || k === 'ru')
+    ) {
+      last.after = { ...last.after, ...entry.after };
+      last.before = { ...entry.before, ...last.before };
+      last.t = now;
+      h.redo = [];
+      bumpHistory();
+      return;
+    }
+    h.undo.push({ ...entry, t: now });
+    if (h.undo.length > 50) h.undo.shift();
+    h.redo = [];
+    bumpHistory();
+  }
+
+  async function applyEdit(entry: EditEntry, values: Record<string, unknown>) {
+    const proj = activeProjectRef.current;
+    if (!proj) return;
+    if (entry.kind === 'step') {
+      const steps = proj.steps.map((s) => (s.id === entry.targetId ? { ...s, ...(values as Partial<GuideStep>) } : s));
+      const next = { ...proj, steps };
+      activeProjectRef.current = next;
+      setActiveProject(next);
+      await updateProject(proj.id, { steps });
+    } else if (entry.kind === 'asset') {
+      await updateScreenshot(entry.targetId, values as Partial<ScreenshotAsset>);
+      const fresh = await getScreenshotsForProject(proj.id);
+      screenshotsRef.current = fresh;
+      setScreenshots(fresh);
+    } else {
+      const next = { ...proj, ...(values as Partial<GuideProject>) };
+      activeProjectRef.current = next;
+      setActiveProject(next);
+      await updateProject(proj.id, values as Partial<GuideProject>);
+    }
+    const idx = (activeProjectRef.current?.steps || []).findIndex((s) => s.id === entry.stepId);
+    if (idx >= 0) setSelectedStepIndex(idx);
+  }
+
+  async function undoEdit() {
+    const h = historyRef.current;
+    const entry = h.undo.pop();
+    if (!entry) return;
+    h.redo.push(entry);
+    bumpHistory();
+    await applyEdit(entry, entry.before);
+  }
+
+  async function redoEdit() {
+    const h = historyRef.current;
+    const entry = h.redo.pop();
+    if (!entry) return;
+    h.undo.push(entry);
+    bumpHistory();
+    await applyEdit(entry, entry.after);
+  }
+
+  const undoFnRef = useRef(undoEdit);
+  undoFnRef.current = undoEdit;
+  const redoFnRef = useRef(redoEdit);
+  redoFnRef.current = redoEdit;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const key = e.key.toLowerCase();
+      const isUndo = key === 'z' && !e.shiftKey;
+      const isRedo = key === 'y' || (key === 'z' && e.shiftKey);
+      if (!isUndo && !isRedo) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) {
+        return; // native undo of the text field
+      }
+      if (!activeProjectRef.current || document.querySelector('[data-testid=shot-import-modal]')) return;
+      e.preventDefault();
+      if (isUndo) void undoFnRef.current();
+      else void redoFnRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  function pickKeys<T extends object>(src: T, keys: string[]): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const k of keys) out[k] = (src as Record<string, unknown>)[k];
+    return out;
+  }
+
+  /** Screenshot edits (blur / mask areas) with undo. */
+  async function handleUpdateScreenshotUndoable(screenshotId: string, updates: Partial<ScreenshotAsset>) {
+    const asset = screenshotsRef.current.find((s) => s.id === screenshotId);
+    const stepId = activeProjectRef.current?.steps[selectedStepIndex]?.id || '';
+    if (asset) {
+      const keys = Object.keys(updates);
+      recordEdit({
+        kind: 'asset',
+        targetId: screenshotId,
+        stepId,
+        before: pickKeys(asset, keys),
+        after: pickKeys(updates, keys),
+      });
+    }
+    await handleUpdateScreenshot(screenshotId, updates);
+  }
+
+  /** Project edits from the step editor: only the all-screenshots blur is undoable. */
+  async function handleUpdateProjectUndoable(updates: Partial<GuideProject>) {
+    const proj = activeProjectRef.current;
+    if (proj && 'globalBlurBoxes' in updates) {
+      recordEdit({
+        kind: 'project',
+        targetId: proj.id,
+        stepId: proj.steps[selectedStepIndex]?.id || '',
+        before: { globalBlurBoxes: proj.globalBlurBoxes || [] },
+        after: { globalBlurBoxes: updates.globalBlurBoxes || [] },
+      });
+    }
+    await handleUpdateProject(updates);
+  }
+
   function handleUpdateCurrentStep(updates: Partial<GuideStep>) {
     if (!activeProject || !activeProject.steps[selectedStepIndex]) return;
+    const cur = activeProject.steps[selectedStepIndex];
+    const keys = Object.keys(updates);
+    const changed = keys.some(
+      (k) => JSON.stringify((cur as unknown as Record<string, unknown>)[k]) !== JSON.stringify((updates as Record<string, unknown>)[k])
+    );
+    if (changed) {
+      recordEdit({
+        kind: 'step',
+        targetId: cur.id,
+        stepId: cur.id,
+        before: pickKeys(cur, keys),
+        after: pickKeys(updates, keys),
+      });
+    }
     const newSteps = [...activeProject.steps];
     newSteps[selectedStepIndex] = {
       ...newSteps[selectedStepIndex],
@@ -1058,6 +1230,9 @@ export default function App() {
                     </>
                   )}
                 </div>
+                <p className="basis-full text-sm text-teal-50 pt-1" data-testid="from-shots-hint">
+                  <b>{UI_TEXT[uiLang].dashboard.fromScreenshots}:</b> {UI_TEXT[uiLang].dashboard.fromScreenshotsHint}
+                </p>
               </div>
             </div>
 
@@ -1491,8 +1666,12 @@ export default function App() {
                       stepIndex={selectedStepIndex}
                       screenshots={screenshots}
                       onUpdateStep={handleUpdateCurrentStep}
-                      onUpdateProject={handleUpdateProject}
-                      onUpdateScreenshot={handleUpdateScreenshot}
+                      onUpdateProject={handleUpdateProjectUndoable}
+                      onUpdateScreenshot={handleUpdateScreenshotUndoable}
+                      onUndo={() => void undoEdit()}
+                      onRedo={() => void redoEdit()}
+                      canUndo={historyRef.current.undo.length > 0}
+                      canRedo={historyRef.current.redo.length > 0}
                       onOpenAiModal={() => setIsAiModalOpen(true)}
                       showStatus={showStatus}
                       uiLang={uiLang}
@@ -1778,6 +1957,10 @@ export default function App() {
           saveUiLang(l);
         }}
         onStartNew={handleCreateNewProject}
+        onStartFromScreenshots={() => {
+          setActiveProjectId(null);
+          setTimeout(() => newFromShotsInputRef.current?.click(), 0);
+        }}
         onOpenDemo={() => {
           setActiveProjectId(null);
           setIsTourOpen(true);
@@ -1803,7 +1986,15 @@ function StepEditorPanel({
   uiLang = 'en',
   onSelectStepIndex,
   onSwitchTab,
+  onUndo,
+  onRedo,
+  canUndo = false,
+  canRedo = false,
 }: {
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
   project: GuideProject;
   step: GuideStep;
   stepIndex: number;
@@ -2099,6 +2290,22 @@ function StepEditorPanel({
     showStatus(uiLang === 'en' ? 'Step blur removed' : 'Локальное размытие удалено');
   };
 
+  // Moving an existing area: without these handlers the move was never saved and the area jumped back
+  const handleUpdateBlurBox = async (idx: number, nb: BoxRect) => {
+    if (!currentAsset) return;
+    const next = (currentAsset.blurBoxes || []).map((b, i) => (i === idx ? nb : b));
+    await onUpdateScreenshot(currentAsset.id, { blurBoxes: next });
+  };
+  const handleUpdateMaskBox = async (idx: number, nb: BoxRect) => {
+    if (!currentAsset) return;
+    const next = (currentAsset.maskBoxes || []).map((b, i) => (i === idx ? nb : b));
+    await onUpdateScreenshot(currentAsset.id, { maskBoxes: next });
+  };
+  const handleUpdateGlobalBlurBox = async (idx: number, nb: BoxRect) => {
+    const next = (project.globalBlurBoxes || []).map((b, i) => (i === idx ? nb : b));
+    await onUpdateProject({ globalBlurBoxes: next });
+  };
+
   const handleAddGlobalBlurBox = async (newBox: BoxRect) => {
     const nextGlobal = [...(project.globalBlurBoxes || []), newBox];
     await onUpdateProject({ globalBlurBoxes: nextGlobal });
@@ -2240,10 +2447,13 @@ function StepEditorPanel({
                 maskBoxes={currentAsset?.maskBoxes}
                 onAddBlurBox={handleAddBlurBox}
                 onRemoveBlurBox={handleRemoveBlurBox}
+                onUpdateBlurBox={handleUpdateBlurBox}
                 onAddGlobalBlurBox={handleAddGlobalBlurBox}
                 onRemoveGlobalBlurBox={handleRemoveGlobalBlurBox}
+                onUpdateGlobalBlurBox={handleUpdateGlobalBlurBox}
                 onAddMaskBox={handleAddMaskBox}
                 onRemoveMaskBox={handleRemoveMaskBox}
+                onUpdateMaskBox={handleUpdateMaskBox}
                 uiLang={uiLang}
               />
             ) : (
@@ -2270,6 +2480,28 @@ function StepEditorPanel({
               : `Шаг ${stepIndex + 1} из ${project.steps.length}`}
           </span>
           <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={onUndo}
+              disabled={!canUndo}
+              data-testid="undo-btn"
+              className="px-2.5 py-1.5 rounded-lg text-sm font-semibold border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-1 text-slate-800 dark:text-slate-200 transition"
+              title={uiLang === 'en' ? 'Undo (Ctrl+Z)' : 'Отменить (Ctrl+Z)'}
+            >
+              <Undo2 className="w-4 h-4" />
+              <span>{uiLang === 'en' ? 'Undo' : 'Отменить'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={onRedo}
+              disabled={!canRedo}
+              data-testid="redo-btn"
+              className="p-1.5 rounded-lg text-sm font-semibold border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-slate-800 dark:text-slate-200 transition"
+              title={uiLang === 'en' ? 'Redo (Ctrl+Y)' : 'Повторить (Ctrl+Y)'}
+              aria-label={uiLang === 'en' ? 'Redo' : 'Повторить'}
+            >
+              <Redo2 className="w-4 h-4" />
+            </button>
             <button
               type="button"
               onClick={() => onSelectStepIndex && onSelectStepIndex(stepIndex - 1)}

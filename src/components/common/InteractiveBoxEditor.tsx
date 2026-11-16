@@ -534,8 +534,9 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
-    const { blurType, index, currentBox } = dragState;
+    const { blurType, index, currentBox, startBox } = dragState;
     setDragState({ type: 'none' });
+    if (currentBox.x === startBox.x && currentBox.y === startBox.y) return; // plain click, nothing moved
 
     if (blurType === 'blur') {
       onUpdateBlurBox?.(index, currentBox);

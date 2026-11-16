@@ -11,6 +11,7 @@ import {
   GraduationCap,
   Plus,
   Sparkles,
+  ImagePlus,
 } from 'lucide-react';
 
 import {
@@ -27,6 +28,8 @@ export interface WelcomeTourModalProps {
   onToggleUiLang?: (lang: 'en' | 'ru') => void;
   /** Final call to action: create a new empty guide (opens Capture). */
   onStartNew?: () => void;
+  /** Second path: the user already has screenshots and uploads them. */
+  onStartFromScreenshots?: () => void;
   /** Final call to action: open the ready-made demo guide. */
   onOpenDemo?: () => void;
 }
@@ -43,6 +46,7 @@ export const WelcomeTourModal: React.FC<WelcomeTourModalProps> = ({
   uiLang,
   onToggleUiLang,
   onStartNew,
+  onStartFromScreenshots,
   onOpenDemo,
 }) => {
   const [currentStep, setCurrentStep] = useState<number>(1);
@@ -90,6 +94,11 @@ export const WelcomeTourModal: React.FC<WelcomeTourModalProps> = ({
   const handleStartNew = () => {
     handleDismiss();
     onStartNew?.();
+  };
+
+  const handleStartFromScreenshots = () => {
+    handleDismiss();
+    onStartFromScreenshots?.();
   };
 
   const handleOpenDemo = () => {
@@ -217,21 +226,40 @@ export const WelcomeTourModal: React.FC<WelcomeTourModalProps> = ({
           </ul>
 
           {isLast && (
-            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={handleStartNew}
-                className="px-4 py-3 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-semibold text-base flex items-center justify-center gap-2 shadow-sm transition"
-              >
-                <Plus className="w-5 h-5" />
-                {t.ctaStart}
-              </button>
+            <div className="mt-6">
+              <p className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-2">{t.pathsHeading}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={handleStartNew}
+                  data-testid="welcome-path-record"
+                  className="text-left p-4 rounded-xl bg-teal-700 hover:bg-teal-800 text-white shadow-sm transition"
+                >
+                  <span className="flex items-center gap-2 font-semibold text-base">
+                    <Plus className="w-5 h-5 shrink-0" />
+                    {t.pathRecord}
+                  </span>
+                  <span className="block text-sm text-teal-50 mt-1">{t.pathRecordHint}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStartFromScreenshots}
+                  data-testid="welcome-path-upload"
+                  className="text-left p-4 rounded-xl border border-teal-600 text-teal-900 dark:text-teal-100 hover:bg-teal-50 dark:hover:bg-teal-950/50 transition"
+                >
+                  <span className="flex items-center gap-2 font-semibold text-base">
+                    <ImagePlus className="w-5 h-5 shrink-0" />
+                    {t.pathUpload}
+                  </span>
+                  <span className="block text-sm text-slate-600 dark:text-slate-300 mt-1">{t.pathUploadHint}</span>
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={handleOpenDemo}
-                className="px-4 py-3 rounded-xl border border-teal-600 text-teal-800 dark:text-teal-200 hover:bg-teal-50 dark:hover:bg-teal-950/50 font-semibold text-base flex items-center justify-center gap-2 transition"
+                className="mt-3 text-sm font-semibold text-teal-800 dark:text-teal-200 hover:underline flex items-center gap-1.5"
               >
-                <Sparkles className="w-5 h-5" />
+                <Sparkles className="w-4 h-4" />
                 {t.ctaDemo}
               </button>
             </div>
