@@ -32,11 +32,11 @@ import {
   ZoomOut,
   PanelLeftOpen,
   PlayCircle,
+  ImagePlus,
 } from 'lucide-react';
 
 import type { ActionType, BoxRect, GuideProject, GuideStep, ScreenshotAsset } from './types/guide';
 import {
-  addScreenshot,
   createDemoProject,
   DEMO_GUIDE_URL,
   createProject,
@@ -56,6 +56,8 @@ import {
   importFromStandaloneHtml,
   createSubProjectFromRange,
 } from './services/importerExporter';
+import { buildStepsFromFiles, onlyImages } from './services/screenshotImport';
+import { ScreenshotImportModal } from './components/editor/ScreenshotImportModal';
 import { LiveCaptureWorkspace } from './components/capture/LiveCaptureWorkspace';
 import {
   InteractiveBoxEditor,
@@ -132,6 +134,12 @@ export default function App() {
   const folderInputRef = useRef<HTMLInputElement>(null);
   const htmlInputRef = useRef<HTMLInputElement>(null);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
+  const newFromShotsInputRef = useRef<HTMLInputElement>(null);
+  const [pendingImport, setPendingImport] = useState<{ files: File[]; mode: 'new' | 'insert' } | null>(null);
+  const [isImportBusy, setIsImportBusy] = useState<boolean>(false);
+  const [isFileDragOver, setIsFileDragOver] = useState<boolean>(false);
+  const [stepDragFrom, setStepDragFrom] = useState<number | null>(null);
+  const [stepDragOver, setStepDragOver] = useState<number | null>(null);
 
   // Split long guide into lessons (range slicer)
   const [sliceFromStep, setSliceFromStep] = useState<number>(1);
@@ -406,31 +414,93 @@ export default function App() {
     }
   }
 
-  // Add Screenshots from disk
-  async function handleScreenshotsUploaded(e: React.ChangeEvent<HTMLInputElement>) {
-    if (!activeProject || !e.target.files) return;
-    const files = Array.from(e.target.files);
+  // Screenshots made outside the app: pick or drop them, review the order, then make steps.
+  function openImportReview(files: File[], mode: 'new' | 'insert') {
+    const images = onlyImages(files);
+    if (images.length === 0) {
+      showStatus(uiLang === 'en' ? 'No pictures found in the selection' : 'Среди выбранных файлов нет картинок');
+      return;
+    }
+    setPendingImport({ files: images, mode });
+  }
+
+  function handleNewFromScreenshotsPicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    e.target.value = '';
+    if (files.length) openImportReview(files, 'new');
+  }
+
+  function handleScreenshotsUploaded(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    e.target.value = '';
+    if (files.length && activeProject) openImportReview(files, 'insert');
+  }
+
+  async function confirmImport(ordered: File[]) {
+    if (!pendingImport || ordered.length === 0) return;
+    const isEn = uiLang === 'en';
     try {
-      setIsLoading(true);
-      const newAssets: ScreenshotAsset[] = [];
-      for (const f of files) {
-        const asset = await addScreenshot(activeProject.id, f, f.name);
-        newAssets.push(asset);
+      setIsImportBusy(true);
+      if (pendingImport.mode === 'new') {
+        const proj = await createProject({
+          titleRu: 'Новый интерактивный гайд',
+          titleEn: 'Interactive Step Guide',
+          subRu: 'Пошаговый интерактивный тренажёр',
+          subEn: 'Step-by-step training walkthrough',
+          pageTitle: isEn ? 'Interactive Step Guide' : 'Интерактивный тренажёр',
+          defaultLang: isEn ? 'en' : 'ru',
+        });
+        const steps = await buildStepsFromFiles(proj.id, ordered);
+        await updateProject(proj.id, { steps });
+        await loadProjects();
+        setActiveProjectId(proj.id);
+        setSelectedStepIndex(0);
+        setActiveTab('editor');
+        showStatus(isEn ? `Guide created: ${steps.length} steps` : `Гайд создан: шагов ${steps.length}`);
+      } else if (activeProject) {
+        const newSteps = await buildStepsFromFiles(activeProject.id, ordered);
+        const at = activeProject.steps.length === 0 ? 0 : selectedStepIndex + 1;
+        const merged = [...activeProject.steps.slice(0, at), ...newSteps, ...activeProject.steps.slice(at)];
+        await updateProject(activeProject.id, { steps: merged });
+        await loadProjectDetails(activeProject.id);
+        setSelectedStepIndex(at);
+        setActiveTab('editor');
+        showStatus(isEn ? `Added ${newSteps.length} steps` : `Добавлено шагов: ${newSteps.length}`);
       }
-      const updatedList = await getScreenshotsForProject(activeProject.id);
-      setScreenshots(updatedList);
-      showStatus(
-        uiLang === 'en'
-          ? `Added ${files.length} screenshots`
-          : `Добавлено скриншотов: ${files.length}`
-      );
+      setPendingImport(null);
     } catch (err) {
       console.error(err);
-      showStatus(uiLang === 'en' ? 'Error uploading screenshots' : 'Ошибка при загрузке скриншота');
+      showStatus(isEn ? 'Could not import the pictures' : 'Не удалось загрузить картинки');
     } finally {
-      setIsLoading(false);
-      if (screenshotInputRef.current) screenshotInputRef.current.value = '';
+      setIsImportBusy(false);
     }
+  }
+
+  // Dragging files from Explorer onto the page (home: new guide, editor: insert steps)
+  const isFileDrag = (e: React.DragEvent) => Array.from(e.dataTransfer?.types || []).includes('Files');
+  function handlePageDragOver(e: React.DragEvent) {
+    if (!isFileDrag(e) || isTourOpen || pendingImport) return;
+    e.preventDefault();
+    setIsFileDragOver(true);
+  }
+  function handlePageDrop(e: React.DragEvent) {
+    if (!isFileDrag(e) || isTourOpen || pendingImport) return;
+    e.preventDefault();
+    setIsFileDragOver(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (!files.length) return;
+    if (!activeProject) openImportReview(files, 'new');
+    else if (activeTab === 'editor') openImportReview(files, 'insert');
+  }
+
+  // Reorder steps by dragging in the editor list (arrows still work)
+  function handleStepDrop(to: number) {
+    if (!activeProject || stepDragFrom === null || stepDragFrom === to) return;
+    const next = [...activeProject.steps];
+    const [moved] = next.splice(stepDragFrom, 1);
+    next.splice(to, 0, moved);
+    saveSteps(next);
+    setSelectedStepIndex(to);
   }
 
   // Step Management
@@ -669,7 +739,48 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans transition-colors">
+    <div
+      className="min-h-screen flex flex-col bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans transition-colors"
+      onDragOver={handlePageDragOver}
+      onDragLeave={(e) => {
+        if (e.currentTarget === e.target || !e.relatedTarget) setIsFileDragOver(false);
+      }}
+      onDrop={handlePageDrop}
+    >
+      {isFileDragOver && (
+        <div className="fixed inset-0 z-40 bg-teal-700/20 border-4 border-dashed border-teal-600 pointer-events-none flex items-center justify-center">
+          <span className="bg-white dark:bg-slate-800 px-6 py-3 rounded-xl shadow-xl text-lg font-semibold text-teal-800 dark:text-teal-200">
+            {!activeProject
+              ? uiLang === 'en' ? 'Drop pictures to create a guide' : 'Отпустите картинки, чтобы создать гайд'
+              : activeTab === 'editor'
+                ? uiLang === 'en' ? 'Drop pictures to add them as steps' : 'Отпустите картинки, чтобы добавить шаги'
+                : uiLang === 'en' ? 'Open the Editor tab to drop pictures' : 'Откройте вкладку редактора, чтобы добавить картинки'}
+          </span>
+        </div>
+      )}
+      {pendingImport && (
+        <ScreenshotImportModal
+          files={pendingImport.files}
+          mode={pendingImport.mode}
+          afterStepNumber={activeProject && activeProject.steps.length > 0 ? selectedStepIndex + 1 : 0}
+          uiLang={uiLang}
+          busy={isImportBusy}
+          onCancel={() => setPendingImport(null)}
+          onConfirm={confirmImport}
+        />
+      )}
+
+      {/* Hidden picker: new guide from screenshots */}
+      <input
+        type="file"
+        ref={newFromShotsInputRef}
+        onChange={handleNewFromScreenshotsPicked}
+        multiple
+        accept="image/*"
+        className="hidden"
+        data-testid="new-from-shots-input"
+      />
+
       {/* Hidden Folder Picker */}
       <input
         type="file"
@@ -699,6 +810,7 @@ export default function App() {
         multiple
         accept="image/*"
         className="hidden"
+        data-testid="insert-shots-input"
       />
 
       {/* Status banner */}
@@ -880,6 +992,15 @@ export default function App() {
                 >
                   <Plus className="w-5 h-5 text-teal-700" />
                   {UI_TEXT[uiLang].dashboard.createGuide}
+                </button>
+
+                <button
+                  onClick={() => newFromShotsInputRef.current?.click()}
+                  data-testid="new-from-screenshots"
+                  className="bg-white text-teal-900 hover:bg-teal-50 px-5 py-2.5 rounded-xl font-semibold text-base flex items-center gap-2 shadow transition"
+                >
+                  <ImagePlus className="w-5 h-5 text-teal-700" />
+                  {UI_TEXT[uiLang].dashboard.fromScreenshots}
                 </button>
 
                 {/* One "Open" action with a small menu: HTML file or legacy folder */}
@@ -1177,6 +1298,19 @@ export default function App() {
                           <span>{uiLang === 'en' ? 'Add' : 'Добавить'}</span>
                         </button>
                         <button
+                          onClick={() => screenshotInputRef.current?.click()}
+                          data-testid="add-screenshots"
+                          className="border border-teal-600 text-teal-800 dark:text-teal-200 hover:bg-teal-50 dark:hover:bg-teal-950/50 px-2 py-1 rounded-lg text-sm font-semibold flex items-center gap-1 transition"
+                          title={
+                            uiLang === 'en'
+                              ? 'Add your own screenshots as new steps after the selected step (or drop files here)'
+                              : 'Добавить свои скриншоты новыми шагами после выбранного (или перетащите файлы сюда)'
+                          }
+                        >
+                          <ImagePlus className="w-4 h-4" />
+                          <span>{uiLang === 'en' ? 'Pictures' : 'Картинки'}</span>
+                        </button>
+                        <button
                           onClick={() => setSidebarMode('compact')}
                           className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
                           title={uiLang === 'en' ? 'Narrow the list' : 'Сузить список'}
@@ -1201,8 +1335,36 @@ export default function App() {
                           return (
                             <div
                               key={st.id}
+                              draggable
+                              data-testid="step-row"
+                              onDragStart={(e) => {
+                                setStepDragFrom(idx);
+                                e.dataTransfer.effectAllowed = 'move';
+                                e.dataTransfer.setData('text/plain', String(idx));
+                              }}
+                              onDragOver={(e) => {
+                                if (stepDragFrom === null) return;
+                                e.preventDefault();
+                                setStepDragOver(idx);
+                              }}
+                              onDrop={(e) => {
+                                if (stepDragFrom === null) return;
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleStepDrop(idx);
+                                setStepDragFrom(null);
+                                setStepDragOver(null);
+                              }}
+                              onDragEnd={() => {
+                                setStepDragFrom(null);
+                                setStepDragOver(null);
+                              }}
                               onClick={() => setSelectedStepIndex(idx)}
                               className={`group p-2.5 rounded-xl border text-sm cursor-pointer transition flex items-start justify-between gap-2 ${
+                                stepDragOver === idx && stepDragFrom !== null && stepDragFrom !== idx
+                                  ? 'ring-2 ring-teal-500 '
+                                  : ''
+                              }${stepDragFrom === idx ? 'opacity-40 ' : ''}${
                                 isSelected
                                   ? 'bg-teal-50 dark:bg-teal-950/40 border-teal-600 text-slate-900 dark:text-slate-100 shadow-sm'
                                   : 'bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-700 hover:border-slate-400'
@@ -1288,6 +1450,14 @@ export default function App() {
                       aria-label={uiLang === 'en' ? 'Add step' : 'Добавить шаг'}
                     >
                       <Plus className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => screenshotInputRef.current?.click()}
+                      className="w-10 h-10 rounded-lg border border-teal-600 text-teal-800 dark:text-teal-200 hover:bg-teal-50 dark:hover:bg-teal-950/50 flex items-center justify-center transition shrink-0"
+                      title={uiLang === 'en' ? 'Add pictures as steps' : 'Добавить картинки шагами'}
+                      aria-label={uiLang === 'en' ? 'Add pictures as steps' : 'Добавить картинки шагами'}
+                    >
+                      <ImagePlus className="w-4 h-4" />
                     </button>
 
                     <div className="flex-1 w-full overflow-y-auto flex flex-row lg:flex-col items-center gap-2 pt-1">
