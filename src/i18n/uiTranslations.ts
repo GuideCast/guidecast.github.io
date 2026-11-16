@@ -77,6 +77,15 @@ export function resetWelcomeTour(): void {
  */
 export const UI_TEXT = {
   en: {
+    pwa: {
+      install: 'Install app',
+      installTitle: 'Install GuideCast as a separate window',
+      updateReady: 'A new version is available',
+      update: 'Update',
+      later: 'Later',
+      offlineReady: 'Ready to work offline',
+      close: 'Close',
+    },
     header: {
       appName: 'GuideCast',
       tagline: 'Step-by-step guides from screenshots',
@@ -262,6 +271,15 @@ export const UI_TEXT = {
     },
   },
   ru: {
+    pwa: {
+      install: 'Установить приложение',
+      installTitle: 'Установить GuideCast как отдельное окно',
+      updateReady: 'Доступна новая версия',
+      update: 'Обновить',
+      later: 'Позже',
+      offlineReady: 'Приложение готово к работе без интернета',
+      close: 'Закрыть',
+    },
     header: {
       appName: 'GuideCast',
       tagline: 'Пошаговые гайды из скриншотов',

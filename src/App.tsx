@@ -66,6 +66,7 @@ import {
   computeDefaultCursorPos,
 } from './components/common/InteractiveBoxEditor';
 import { AiAndPrivacyModal } from './components/editor/AiAndPrivacyModal';
+import { UpdateBanner, InstallButton } from './components/common/PwaControls';
 import { WelcomeTourModal } from './components/onboarding/WelcomeTourModal';
 import {
   type UiLang,
@@ -1929,7 +1930,9 @@ export default function App() {
         >
           Stanislav Sidorovich
         </a>
+        <InstallButton uiLang={uiLang} />
       </footer>
+      <UpdateBanner uiLang={uiLang} />
 
       {/* Ai and Privacy Modal */}
       {activeProject && (
