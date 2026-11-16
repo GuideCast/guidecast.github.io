@@ -999,7 +999,10 @@ export default function App() {
         <div className="w-full max-w-[1920px] mx-auto px-3 sm:px-5 lg:px-6 py-3 flex items-center justify-between gap-4">
         <button
           type="button"
-          onClick={() => setActiveProjectId(null)}
+          onClick={() => {
+            setIsTourOpen(false);
+            setActiveProjectId(null);
+          }}
           title={uiLang === 'en' ? 'Back to all guides' : 'К списку гайдов'}
           data-testid="header-home"
           className="flex items-center gap-3 text-left rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
