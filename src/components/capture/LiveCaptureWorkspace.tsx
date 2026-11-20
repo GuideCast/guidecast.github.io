@@ -20,6 +20,7 @@ import {
   ListFilter,
   Move,
   Maximize2,
+  Minus,
   ArrowDown,
   Sparkles,
   Layers,
@@ -152,6 +153,8 @@ const translations = {
     deleteStep: 'Delete this step',
     autoModeActive: 'Live Auto Mode Active',
     closeRemote: 'Close remote window',
+    collapseRemote: 'Minimize to a small bar (bottom right)',
+    expandRemote: 'Expand the recorder',
     hideRemote: 'Hide mini remote',
     finishCapture: 'Stop Capture',
     nextStepBtn: 'Back to Live Stream for Next Step',
@@ -256,6 +259,8 @@ const translations = {
     deleteStep: 'Удалить этот шаг',
     autoModeActive: 'Авто-режим активен',
     closeRemote: 'Закрыть плавающее окно',
+    collapseRemote: 'Свернуть в маленькую панель (справа внизу)',
+    expandRemote: 'Развернуть пульт',
     hideRemote: 'Скрыть мини-пульт',
     finishCapture: 'Завершить',
     nextStepBtn: 'Вернуться к эфиру для следующего шага',
@@ -336,6 +341,8 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
     }
   };
   const [pipViewMode, setPipViewMode] = useState<PipViewMode>('live');
+  const [pipCollapsed, setPipCollapsed] = useState(false);
+  const pipSavedRectRef = useRef<{ w: number; h: number; x: number; y: number } | null>(null);
 
   // --- Active Draw Mode & Interaction ---
   const [drawMode, setDrawMode] = useState<DrawMode>('shoot');
@@ -481,6 +488,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
     const unsubscribe = onPipClose(() => {
       setPipWindow(null);
       setPipViewMode('live');
+      setPipCollapsed(false);
     });
     return () => unsubscribe();
   }, []);
@@ -569,11 +577,38 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
     }, 250);
   };
 
+  // --- Minimize the floating recorder to a small bar in the bottom-right corner and back ---
+  // Needs the click (user activation) that triggers it; the video element stays mounted so the stream keeps running.
+  const handleTogglePipCollapse = () => {
+    const win = pipWindow;
+    if (!win) return;
+    try {
+      if (!pipCollapsed) {
+        pipSavedRectRef.current = { w: win.outerWidth, h: win.outerHeight, x: win.screenX, y: win.screenY };
+        const w = 300;
+        const h = 120;
+        win.resizeTo(w, h);
+        const scr = window.screen as Screen & { availLeft?: number; availTop?: number };
+        win.moveTo((scr.availLeft ?? 0) + scr.availWidth - w - 16, (scr.availTop ?? 0) + scr.availHeight - h - 16);
+      } else {
+        const saved = pipSavedRectRef.current;
+        if (saved) {
+          win.resizeTo(saved.w, saved.h);
+          win.moveTo(saved.x, saved.y);
+        }
+      }
+    } catch (err) {
+      console.warn('Could not resize the floating recorder:', err);
+    }
+    setPipCollapsed((v) => !v);
+  };
+
   // --- Picture-in-Picture Remote Controls ---
   const handleTogglePip = async () => {
     if (pipWindow) {
       closePipWindow();
       setPipWindow(null);
+      setPipCollapsed(false);
       return;
     }
 
@@ -1225,9 +1260,48 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
     const currentStepNum = activeStepIndex >= 0 ? activeStepIndex + 1 : project.steps.length;
     const blurBoxesCount = lastCapturedScreenshot?.blurBoxes?.length || 0;
 
+    const collapsed = isPip && pipCollapsed;
+
     return (
+      <>
+      {collapsed && (
+        <div
+          data-testid="pip-collapsed-bar"
+          className={`h-screen flex items-center justify-between gap-2 px-3 ${
+            isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-800'
+          }`}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <span
+              className={`inline-flex rounded-full h-3 w-3 shrink-0 ${
+                isFrozen ? 'bg-sky-400' : isCapturingScreen ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+              }`}
+            />
+            <span className="text-xs font-bold truncate">
+              {text.stepsCount} {project.steps.length}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={handleTogglePipCollapse}
+              className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold flex items-center gap-1"
+              title={text.expandRemote}
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+              {lang === 'en' ? 'Expand' : 'Развернуть'}
+            </button>
+            <button
+              onClick={() => closePipWindow()}
+              className={`p-1 rounded ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
+              title={text.closeRemote}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
       <div
-        className={`flex flex-col select-none ${
+        className={`flex flex-col select-none ${collapsed ? 'hidden ' : ''}${
           isPip
             ? `h-screen max-h-screen overflow-hidden p-2.5 sm:p-3 ${
                 isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-800'
@@ -1314,6 +1388,21 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
               >
                 <ExternalLink className="w-3 h-3" />
                 <span className="hidden sm:inline">{text.openInEditor}</span>
+              </button>
+            )}
+
+            {isPip && (
+              <button
+                onClick={handleTogglePipCollapse}
+                className={`p-1 rounded transition ${
+                  isDarkMode
+                    ? 'hover:bg-slate-800 text-slate-400 hover:text-white'
+                    : 'hover:bg-slate-100 text-slate-500 hover:text-slate-800'
+                }`}
+                title={text.collapseRemote}
+                data-testid="pip-collapse"
+              >
+                <Minus className="w-4 h-4" />
               </button>
             )}
 
@@ -1760,6 +1849,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
           )}
         </div>
       </div>
+      </>
     );
   };
 
