@@ -244,12 +244,12 @@ export const UI_TEXT = {
         title: 'Record',
         desc: 'Share the browser tab with the program you teach (for example, Microsoft Fabric) and take a snapshot at each step.',
         point1: 'Click "Start recording", then choose the tab with your program (not this page) and click Share. Chrome switches to that tab and a small floating recorder opens on top.',
-        point2: 'Do the task as usual. Before each click, drag the mouse over that button in the floating recorder: each drag saves one step.',
+        point2: 'Do the task as usual. Before each click, drag the mouse over that button in the floating recorder: each drag saves one step. Or press Auto: a step is saved whenever the screen changes and stays still (set the red frame later). The minus button shrinks the recorder to a small bar.',
       },
       step2: {
         title: 'Caption',
         desc: 'For each snapshot, check where to click and write one short sentence for the student.',
-        point1: 'Drag the red box over the button. The small arrow shows the mouse pointer.',
+        point1: 'Drag the red box over the button to click. The small arrow shows the mouse pointer. Need more? Add blue (type here), grey dashed (do not click) or orange (notice) areas.',
         point2: 'Type the caption or press the microphone and say it out loud.',
       },
       step3: {
@@ -438,12 +438,12 @@ export const UI_TEXT = {
         title: 'Запишите',
         desc: 'Покажите вкладку браузера с программой, которую вы преподаёте (например, Microsoft Fabric), и делайте снимок на каждом шаге.',
         point1: 'Нажмите «Начать запись», выберите вкладку с программой (не эту страницу) и нажмите «Поделиться». Chrome перейдёт на эту вкладку, и сверху откроется маленький плавающий пульт.',
-        point2: 'Выполняйте задание как обычно. Перед каждым нажатием обведите мышью эту кнопку в плавающем пульте: каждое обведение сохраняет один шаг.',
+        point2: 'Выполняйте задание как обычно. Перед каждым нажатием обведите мышью эту кнопку в плавающем пульте: каждое обведение сохраняет один шаг. Или нажмите «Авто»: шаг сохраняется сам, когда экран меняется и замирает (красную рамку выставите потом). Кнопка «минус» сворачивает пульт в маленькую панель.',
       },
       step2: {
         title: 'Подпишите',
         desc: 'На каждом снимке проверьте, куда нажать, и напишите одно короткое предложение для студента.',
-        point1: 'Перетащите красную рамку на кнопку. Маленькая стрелка показывает курсор мыши.',
+        point1: 'Перетащите красную рамку на кнопку, куда нажать. Маленькая стрелка показывает курсор мыши. Нужно больше? Добавьте синюю (ввести текст), серую пунктирную (не нажимать) или оранжевую (обратить внимание) области.',
         point2: 'Напечатайте подпись или нажмите на микрофон и произнесите её вслух.',
       },
       step3: {

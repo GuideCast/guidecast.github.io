@@ -12,6 +12,28 @@ export interface BoxRect {
 }
 
 /**
+ * Extra highlighted area on a step, besides the main action box.
+ * type = "enter text here", avoid = "do not click here", note = "look here".
+ */
+export type ExtraBoxKind = 'type' | 'avoid' | 'note';
+
+export interface ExtraBox extends BoxRect {
+  kind: ExtraBoxKind;
+}
+
+export const EXTRA_BOX_KINDS: ExtraBoxKind[] = ['type', 'avoid', 'note'];
+
+/** Colors for extra areas. The main action box stays red; these differ by color AND by badge/dash (not color alone). */
+export const EXTRA_KIND_STYLE: Record<
+  ExtraBoxKind,
+  { color: string; fill: string; dash: boolean; badge: string; en: string; ru: string }
+> = {
+  type: { color: '#2563eb', fill: 'rgba(37,99,235,0.18)', dash: false, badge: 'Aa', en: 'Enter text here', ru: 'Здесь ввести текст' },
+  avoid: { color: '#475569', fill: 'rgba(71,85,105,0.16)', dash: true, badge: '✕', en: 'Do not click here', ru: 'Сюда не нажимать' },
+  note: { color: '#d97706', fill: 'rgba(245,158,11,0.18)', dash: false, badge: '!', en: 'Pay attention', ru: 'Обратите внимание' },
+};
+
+/**
  * Single step within a guide project.
  */
 export interface GuideStep {
@@ -20,6 +42,7 @@ export interface GuideStep {
   chapterTitle?: string;
   act: ActionType;
   box: BoxRect;
+  extraBoxes?: ExtraBox[]; // optional additional colored areas (enter text, do not click, note)
   cursorPos?: { x: number; y: number }; // optional custom cursor percentage (0..100)
   en: string;
   ru: string;
@@ -97,6 +120,7 @@ export interface StandaloneStep {
   img: string;
   act: ActionType;
   box: [number, number, number, number]; // [x%, y%, w%, h%]
+  extra?: [number, number, number, number, ExtraBoxKind][];
   en: string;
   ru: string;
   chapterTitle?: string;

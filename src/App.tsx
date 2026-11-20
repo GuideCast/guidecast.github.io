@@ -37,7 +37,8 @@ import {
   Redo2,
 } from 'lucide-react';
 
-import type { ActionType, BoxRect, GuideProject, GuideStep, ScreenshotAsset } from './types/guide';
+import type { ActionType, BoxRect, ExtraBoxKind, GuideProject, GuideStep, ScreenshotAsset } from './types/guide';
+import { EXTRA_BOX_KINDS, EXTRA_KIND_STYLE } from './types/guide';
 import {
   createDemoProject,
   DEMO_GUIDE_URL,
@@ -88,7 +89,7 @@ import {
 } from './services/speechService';
 
 type ActiveTab = 'capture' | 'editor' | 'player';
-type EditorDrawTool = 'target' | 'blur' | 'globalBlur' | 'mask';
+type EditorDrawTool = 'target' | 'blur' | 'globalBlur' | 'mask' | 'extra';
 
 type EditEntry = {
   kind: 'step' | 'asset' | 'project';
@@ -2025,6 +2026,7 @@ function StepEditorPanel({
 
   // Active mouse drawing tool for InteractiveBoxEditor
   const [drawMode, setDrawMode] = useState<EditorDrawTool>('target');
+  const [extraKind, setExtraKind] = useState<ExtraBoxKind>('type');
 
   // Zoom & Canvas Height Expansion
   const [zoom, setZoom] = useState<number>(100);
@@ -2345,6 +2347,15 @@ function StepEditorPanel({
     );
   };
 
+  const handleAddExtraBox = (newBox: BoxRect) => {
+    onUpdateStep({ extraBoxes: [...(step.extraBoxes || []), { ...newBox, kind: extraKind }] });
+  };
+
+  const handleRemoveExtraBox = (idx: number) => {
+    const next = (step.extraBoxes || []).filter((_, i) => i !== idx);
+    onUpdateStep({ extraBoxes: next.length ? next : undefined });
+  };
+
   const handleRemoveMaskBox = async (idx: number) => {
     if (!currentAsset) return;
     const nextMasks = (currentAsset.maskBoxes || []).filter((_, i) => i !== idx);
@@ -2391,6 +2402,7 @@ function StepEditorPanel({
     blur: { en: 'Blur on this screenshot', ru: 'Размытие на этом скриншоте' },
     globalBlur: { en: 'Blur on all screenshots', ru: 'Размытие на всех скриншотах' },
     mask: { en: 'Solid patch', ru: 'Сплошная заплатка' },
+    extra: { en: 'Extra highlight', ru: 'Дополнительная подсветка' },
   };
 
   const toolButtonClass = (active: boolean) =>
@@ -2409,7 +2421,11 @@ function StepEditorPanel({
             <span>
               <b>{uiLang === 'en' ? drawModeLabels[drawMode].en : drawModeLabels[drawMode].ru}:</b>{' '}
               {uiLang === 'en'
-                ? 'drag on the picture to draw an area. Click an area to move it, or its x to remove it.'
+                ? drawMode === 'extra'
+                  ? 'drag on the picture to draw an area. Remove an area with its x.'
+                  : 'drag on the picture to draw an area. Click an area to move it, or its x to remove it.'
+                : drawMode === 'extra'
+                ? 'протяните мышью по картинке, чтобы нарисовать область. Удалить область можно крестиком.'
                 : 'протяните мышью по картинке, чтобы нарисовать область. Область можно сдвинуть или удалить крестиком.'}
             </span>
             <button
@@ -2457,6 +2473,10 @@ function StepEditorPanel({
                 blurBoxes={currentAsset?.blurBoxes}
                 globalBlurBoxes={project.globalBlurBoxes}
                 maskBoxes={currentAsset?.maskBoxes}
+                extraBoxes={step.extraBoxes}
+                extraKind={extraKind}
+                onAddExtraBox={handleAddExtraBox}
+                onRemoveExtraBox={handleRemoveExtraBox}
                 onAddBlurBox={handleAddBlurBox}
                 onRemoveBlurBox={handleRemoveBlurBox}
                 onUpdateBlurBox={handleUpdateBlurBox}
@@ -2641,6 +2661,49 @@ function StepEditorPanel({
           <Play className="w-4 h-4" />
           {uiLang === 'en' ? 'Preview and download the guide' : 'Просмотреть и скачать гайд'}
         </button>
+
+        {/* ===== Extra colored highlights: enter text / do not click / note ===== */}
+        <section
+          data-testid="extra-highlights"
+          className="rounded-xl border border-slate-300 dark:border-slate-600 px-3 py-2.5 space-y-2"
+        >
+          <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            {uiLang === 'en' ? 'More highlights on this step' : 'Ещё подсветки на этом шаге'}
+            {(step.extraBoxes?.length || 0) > 0 && (
+              <span className="ml-2 bg-slate-200 dark:bg-slate-700 text-xs px-1.5 py-0.5 rounded-full">
+                {step.extraBoxes!.length}
+              </span>
+            )}
+          </h4>
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            {uiLang === 'en'
+              ? 'The red frame is where to click. Add other areas: where to type, where not to click, what to notice.'
+              : 'Красная рамка показывает, куда нажать. Добавьте другие области: где ввести текст, куда не нажимать, на что обратить внимание.'}
+          </p>
+          <div className="grid grid-cols-1 gap-1.5">
+            {EXTRA_BOX_KINDS.map((k) => {
+              const st = EXTRA_KIND_STYLE[k];
+              const active = drawMode === 'extra' && extraKind === k;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => {
+                    setExtraKind(k);
+                    setDrawMode('extra');
+                  }}
+                  className={toolButtonClass(active)}
+                >
+                  <span
+                    className="inline-block w-3.5 h-3.5 mr-2 align-middle rounded-sm"
+                    style={{ border: `2px ${st.dash ? 'dashed' : 'solid'} ${st.color}`, background: '#ffffff' }}
+                  />
+                  {uiLang === 'en' ? st.en : st.ru}
+                </button>
+              );
+            })}
+          </div>
+        </section>
 
         {/* ===== Privacy & more tools (collapsible, remembered) ===== */}
         <div className="rounded-xl border border-slate-300 dark:border-slate-600">
@@ -3003,6 +3066,33 @@ function LivePlayerPreview({
               : ''
           }
         />
+
+        {(s.extraBoxes || []).map((e, k) => {
+          const st = EXTRA_KIND_STYLE[e.kind];
+          if (!st) return null;
+          return (
+            <div
+              key={`px-${k}`}
+              className="absolute rounded pointer-events-none"
+              style={{
+                left: `${e.x}%`,
+                top: `${e.y}%`,
+                width: `${e.w}%`,
+                height: `${e.h}%`,
+                border: `3px ${st.dash ? 'dashed' : 'solid'} ${st.color}`,
+                backgroundColor: st.fill,
+                zIndex: 16,
+              }}
+            >
+              <span
+                className="absolute -top-3 -left-1 text-white text-[11px] font-bold px-1.5 py-0.5 rounded"
+                style={{ backgroundColor: st.color }}
+              >
+                {st.badge}
+              </span>
+            </div>
+          );
+        })}
 
         {/* SVG Cursor Pointer with accurate cursorPos */}
         {(() => {

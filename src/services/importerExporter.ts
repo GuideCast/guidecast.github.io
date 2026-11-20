@@ -1,6 +1,8 @@
 import type {
   ActionType,
   BoxRect,
+  ExtraBox,
+  ExtraBoxKind,
   GuideProject,
   GuideStep,
   LegacyStep,
@@ -9,6 +11,7 @@ import type {
   StandaloneMeta,
   StandaloneStep,
 } from '../types/guide';
+import { EXTRA_BOX_KINDS } from '../types/guide';
 import {
   addScreenshot,
   db,
@@ -509,6 +512,15 @@ export async function exportStandaloneHtml(
         Number(st.box.w.toFixed(2)),
         Number(st.box.h.toFixed(2)),
       ],
+      extra: st.extraBoxes && st.extraBoxes.length
+        ? st.extraBoxes.map((e) => [
+            Number(e.x.toFixed(2)),
+            Number(e.y.toFixed(2)),
+            Number(e.w.toFixed(2)),
+            Number(e.h.toFixed(2)),
+            e.kind,
+          ] as [number, number, number, number, ExtraBoxKind])
+        : undefined,
       en: textEn,
       ru: textRu,
       chapterTitle: st.chapterTitle,
@@ -571,6 +583,7 @@ export async function exportStandaloneHtml(
         chapterTitle: st.chapterTitle,
         act: st.act,
         box: st.box,
+        extraBoxes: st.extraBoxes,
         cursorPos: st.cursorPos,
         en: st.en,
         ru: st.ru,
@@ -612,6 +625,8 @@ h1 small{display:block;font-weight:400;color:var(--muted);font-size:13px}
 .shot img{width:100%;height:auto;display:block}
 .hl{position:absolute;border:3px solid var(--hl);border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.2);pointer-events:none;animation:pulse 1.4s ease-in-out infinite;transition:all .2s ease}
 .hl.clickable{pointer-events:auto;cursor:pointer}
+.hx{position:absolute;border-radius:8px;pointer-events:none;border:3px solid;transition:all .2s ease}
+.hx b{position:absolute;top:-11px;left:-4px;color:#fff;font:700 11px/1 system-ui,sans-serif;padding:3px 6px;border-radius:6px}
 .hl.clicked{animation:flash .3s ease-out;border-color:var(--success)}
 @keyframes pulse{0%,100%{outline:0 solid rgba(229,50,45,.6)}50%{outline:8px solid rgba(229,50,45,0)}}
 @keyframes flash{0%{transform:scale(0.96);outline:12px solid rgba(16,185,129,.8)}100%{transform:scale(1);outline:0 solid rgba(16,185,129,0)}}
@@ -806,6 +821,25 @@ function render() {
   hl.classList.toggle("clickable", trainerMode);
   hl.style.pointerEvents = trainerMode ? "" : "none";
   hl.title = trainerMode ? "Click here to advance" : "";
+
+  const shotEl = $("shot");
+  shotEl.querySelectorAll(".hx").forEach(function(n){ n.remove(); });
+  const XSTYLE = {
+    type: ["#2563eb", "rgba(37,99,235,.18)", "solid", "Aa"],
+    avoid: ["#475569", "rgba(71,85,105,.16)", "dashed", "✕"],
+    note: ["#d97706", "rgba(245,158,11,.18)", "solid", "!"]
+  };
+  (s.extra || []).forEach(function(e){
+    const st = XSTYLE[e[4]]; if (!st) return;
+    const d = document.createElement("div");
+    d.className = "hx";
+    d.style.cssText = "left:" + e[0] + "%;top:" + e[1] + "%;width:" + e[2] + "%;height:" + e[3] + "%;border-color:" + st[0] + ";border-style:" + st[2] + ";background:" + st[1];
+    const bd = document.createElement("b");
+    bd.style.background = st[0];
+    bd.textContent = st[3];
+    d.appendChild(bd);
+    shotEl.appendChild(d);
+  });
   
   const c = $("cur");
   if (s.cursorPos && Array.isArray(s.cursorPos)) {
@@ -1196,6 +1230,7 @@ export async function importFromStandaloneHtml(file: File): Promise<GuideProject
       act: (s.act as ActionType) || 'click',
       box,
       cursorPos,
+      extraBoxes: cleanExtraBoxes(s.extra).length ? cleanExtraBoxes(s.extra) : undefined,
       chapterTitle: s.chapterTitle || s.chapter || s.chapter_title,
       en: enText,
       ru: ruText,
@@ -1282,6 +1317,7 @@ export async function createSubProjectFromRange(
     id: generateId(),
     screenshotId: oldIdToNewId.get(s.screenshotId) || s.screenshotId,
     box: { ...s.box },
+    extraBoxes: s.extraBoxes ? s.extraBoxes.map((e) => ({ ...e })) : undefined,
     cursorPos: s.cursorPos ? { ...s.cursorPos } : undefined,
   }));
 
@@ -1309,6 +1345,20 @@ export async function createSubProjectFromRange(
 }
 
 const BOX_KEYS = ['x', 'y', 'w', 'h'] as const;
+function cleanExtraBoxes(list: any): ExtraBox[] {
+  if (!Array.isArray(list)) return [];
+  const out: ExtraBox[] = [];
+  for (const e of list) {
+    // Accept {x,y,w,h,kind} (project source) and [x,y,w,h,kind] (player data)
+    const arr = Array.isArray(e) ? e : [e?.x, e?.y, e?.w, e?.h, e?.kind];
+    const kind = arr[4] as ExtraBoxKind;
+    if (!EXTRA_BOX_KINDS.includes(kind)) continue;
+    const num = (v: any, lo: number, hi: number, d: number) => Math.max(lo, Math.min(hi, Number(v) || d));
+    out.push({ x: num(arr[0], 0, 100, 0), y: num(arr[1], 0, 100, 0), w: num(arr[2], 0.1, 100, 10), h: num(arr[3], 0.1, 100, 10), kind });
+  }
+  return out;
+}
+
 function cleanBox(b: any): BoxRect {
   const out: any = {};
   for (const k of BOX_KEYS) out[k] = Number(b?.[k]) || 0;
@@ -1358,6 +1408,8 @@ async function tryImportEmbeddedSource(html: string): Promise<GuideProject | nul
       ru: s.ru || '',
     };
     if (s.chapterTitle !== undefined && s.chapterTitle !== null) step.chapterTitle = s.chapterTitle;
+    const extras = cleanExtraBoxes(s.extraBoxes);
+    if (extras.length) step.extraBoxes = extras;
     if (s.cursorPos && typeof s.cursorPos === 'object') {
       step.cursorPos = { x: Number(s.cursorPos.x) || 0, y: Number(s.cursorPos.y) || 0 };
     }

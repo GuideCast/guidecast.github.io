@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { EXTRA_BOX_KINDS, EXTRA_KIND_STYLE } from '../../types/guide';
+import type { ExtraBoxKind } from '../../types/guide';
 import {
   Camera,
   Video,
@@ -60,7 +62,7 @@ export interface LiveCaptureWorkspaceProps {
   isDarkMode?: boolean;
 }
 
-type DrawMode = 'shoot' | 'add_step_same_frame' | 'blur';
+type DrawMode = 'shoot' | 'add_step_same_frame' | 'blur' | 'extra';
 type PipViewMode = 'live' | 'frozen';
 
 const ACTION_DEFAULTS: Record<'en' | 'ru', Record<ActionType, { prefix: string; placeholder: string; label: string }>> = {
@@ -342,6 +344,11 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
   };
   const [pipViewMode, setPipViewMode] = useState<PipViewMode>('live');
   const [pipCollapsed, setPipCollapsed] = useState(false);
+  const [extraKind, setExtraKind] = useState<ExtraBoxKind>('type');
+  // Auto mode: save a step by itself whenever the recorded screen changes and then stays still for a moment.
+  const [autoMode, setAutoMode] = useState(false);
+  const [autoPauseMs, setAutoPauseMs] = useState<number>(500);
+  const [autoCount, setAutoCount] = useState(0);
   const pipSavedRectRef = useRef<{ w: number; h: number; x: number; y: number } | null>(null);
 
   // --- Active Draw Mode & Interaction ---
@@ -989,6 +996,103 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
     }
   };
 
+  // --- Auto mode: save a step by itself when the recorded screen changes and then stays still ---
+  // The page cannot see clicks inside another tab, so this watches the picture instead: a small grayscale-free
+  // thumbnail of the video is compared every 250 ms. A step is saved when (a) the screen differs enough from the
+  // last saved one and (b) it has not moved for the chosen pause. The highlight is set later in the editor.
+  const projectRef = useRef(project);
+  projectRef.current = project;
+  const onProjectUpdatedRef = useRef(onProjectUpdated);
+  onProjectUpdatedRef.current = onProjectUpdated;
+  const autoBusyRef = useRef(false);
+  const autoLastStepsRef = useRef<GuideStep[]>([]);
+
+  useEffect(() => {
+    if (!autoMode || !isCapturingScreen || pipViewMode === 'frozen') return;
+    const host: Window = pipWindow || window;
+    const W = 96;
+    const H = 54;
+    const TICK = 250;
+    const MOVING = 0.02; // share of pixels that changed since the previous tick = "still moving"
+    const CHANGED = 0.03; // share of pixels that differ from the last saved screen = "new screen"
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+
+    const thumb = (): Uint8ClampedArray | null => {
+      const video = (pipWindow && pipVideoRef.current) || videoRef.current || pipVideoRef.current;
+      if (!video || !video.videoWidth) return null;
+      ctx.drawImage(video, 0, 0, W, H);
+      return ctx.getImageData(0, 0, W, H).data;
+    };
+    const diffShare = (a: Uint8ClampedArray, b: Uint8ClampedArray) => {
+      let n = 0;
+      for (let i = 0; i < a.length; i += 4) {
+        const d = Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]);
+        if (d > 60) n++;
+      }
+      return n / (W * H);
+    };
+
+    const saveAutoStep = async () => {
+      const blob = await captureCurrentVideoFrame();
+      const proj = projectRef.current;
+      const asset = await addScreenshot(proj.id, blob, `shot_auto_${Date.now()}.png`);
+      const initialBox: BoxRect = { x: 15, y: 15, w: 70, h: 70 };
+      const newStep: GuideStep = {
+        id: generateId(),
+        screenshotId: asset.id,
+        act: 'look',
+        box: initialBox,
+        cursorPos: computeDefaultCursorPos(initialBox),
+        ru: ACTION_DEFAULTS.ru.look.placeholder,
+        en: ACTION_DEFAULTS.en.look.placeholder,
+      };
+      const base = autoLastStepsRef.current.length > proj.steps.length ? autoLastStepsRef.current : proj.steps;
+      const nextSteps = [...base, newStep];
+      autoLastStepsRef.current = nextSteps;
+      await updateProject(proj.id, { steps: nextSteps });
+      await onProjectUpdatedRef.current();
+      setAutoCount((c) => c + 1);
+    };
+
+    let ref: Uint8ClampedArray | null = thumb();
+    let prev: Uint8ClampedArray | null = ref;
+    let still = 0;
+    const timer = host.setInterval(async () => {
+      const cur = thumb();
+      if (!cur) return;
+      if (!ref || !prev) {
+        ref = cur;
+        prev = cur;
+        return;
+      }
+      const moving = diffShare(cur, prev) > MOVING;
+      prev = cur;
+      still = moving ? 0 : still + TICK;
+      if (still >= autoPauseMs && !autoBusyRef.current && diffShare(cur, ref) > CHANGED) {
+        autoBusyRef.current = true;
+        ref = cur;
+        try {
+          await saveAutoStep();
+        } catch (err) {
+          console.error('Auto capture failed:', err);
+        } finally {
+          autoBusyRef.current = false;
+        }
+      }
+    }, TICK);
+    return () => host.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoMode, isCapturingScreen, pipWindow, autoPauseMs, pipViewMode]);
+
+  // Auto mode makes no sense without a live recording
+  useEffect(() => {
+    if (!isCapturingScreen) setAutoMode(false);
+  }, [isCapturingScreen]);
+
   // --- Snapshot Full Frame Button ---
   const handleCaptureFullFrame = async () => {
     try {
@@ -1104,7 +1208,17 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
   );
 
   const handleBoxDrawComplete = useCallback(
-    async (drawnBox: BoxRect, mode: 'target' | 'blur' | 'globalBlur' | 'mask') => {
+    async (drawnBox: BoxRect, mode: 'target' | 'blur' | 'globalBlur' | 'mask' | 'extra') => {
+      if (mode === 'extra') {
+        if (!activeStep) return;
+        const updatedSteps = project.steps.map((s) =>
+          s.id === activeStep.id ? { ...s, extraBoxes: [...(s.extraBoxes || []), { ...drawnBox, kind: extraKind }] } : s
+        );
+        await updateProject(project.id, { steps: updatedSteps });
+        await onProjectUpdated();
+        showBanner(lang === 'en' ? 'Highlight added. Draw another or press Target Box.' : 'Подсветка добавлена. Нарисуйте ещё или нажмите «Рамка шага».');
+        return;
+      }
       if (mode === 'blur') {
         if (!lastCapturedScreenshot) return;
         const updatedBlurBoxes = [...lastCapturedScreenshot.blurBoxes, drawnBox];
@@ -1114,7 +1228,21 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
         setDrawMode('shoot');
       }
     },
-    [lastCapturedScreenshot, onProjectUpdated, showBanner, text.blurApplied]
+    [lastCapturedScreenshot, onProjectUpdated, showBanner, text.blurApplied, activeStep, project.id, project.steps, extraKind, lang]
+  );
+
+  const handleRemoveExtraBox = useCallback(
+    async (index: number) => {
+      if (!activeStep) return;
+      const updatedSteps = project.steps.map((s) => {
+        if (s.id !== activeStep.id) return s;
+        const next = (s.extraBoxes || []).filter((_, i) => i !== index);
+        return { ...s, extraBoxes: next.length ? next : undefined };
+      });
+      await updateProject(project.id, { steps: updatedSteps });
+      await onProjectUpdated();
+    },
+    [activeStep, project.id, project.steps, onProjectUpdated]
   );
 
   // --- Blur Box Management Direct in PiP ---
@@ -1539,7 +1667,10 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
                 onDrawComplete={handleBoxDrawComplete}
                 onRemoveBlurBox={handleRemoveBlurBox}
                 onUpdateBlurBox={handleUpdateBlurBox}
-                drawMode={drawMode === 'blur' ? 'blur' : 'target'}
+                drawMode={drawMode === 'blur' ? 'blur' : drawMode === 'extra' ? 'extra' : 'target'}
+                extraBoxes={activeStep.extraBoxes}
+                extraKind={extraKind}
+                onRemoveExtraBox={handleRemoveExtraBox}
               />
 
               {/* Frozen Badge Banner */}
@@ -1627,6 +1758,30 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
                 <Plus className="w-3 h-3 text-sky-400" />
                 <span>{lang === 'en' ? '+ Step' : '+ Шаг'}</span>
               </button>
+
+              {EXTRA_BOX_KINDS.map((k) => {
+                const st = EXTRA_KIND_STYLE[k];
+                const active = drawMode === 'extra' && extraKind === k;
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    data-testid={`pip-extra-${k}`}
+                    onClick={() => {
+                      setExtraKind(k);
+                      setDrawMode('extra');
+                      showBanner(lang === 'en' ? `${st.en}: drag on the frame` : `${st.ru}: обведите область на кадре`);
+                    }}
+                    className={`px-2 py-1 rounded text-[11px] font-bold border transition ${
+                      active ? 'text-white shadow-sm ring-2 ring-white/40' : isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                    }`}
+                    style={active ? { backgroundColor: st.color, borderColor: st.color } : { borderLeft: `4px ${st.dash ? 'dashed' : 'solid'} ${st.color}` }}
+                    title={lang === 'en' ? st.en : st.ru}
+                  >
+                    {st.badge}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Blur helpers (Undo / Clear) */}
@@ -1805,6 +1960,52 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
             {liveTranscript || (isVoiceActive ? text.listening : text.voicePrompt)}
           </div>
         </div>
+
+        {/* Auto mode: a step is saved by itself when the screen changes (live view only) */}
+        {!isFrozen && isCapturingScreen && (
+          <div
+            data-testid="auto-row"
+            className={`shrink-0 mb-1.5 flex items-center justify-between gap-2 rounded-lg border px-2 py-1.5 text-xs ${
+              autoMode
+                ? isDarkMode ? 'border-emerald-600 bg-emerald-950/40' : 'border-emerald-500 bg-emerald-50'
+                : isDarkMode ? 'border-slate-800 bg-slate-900/90' : 'border-slate-200 bg-slate-50'
+            }`}
+          >
+            <button
+              type="button"
+              data-testid="auto-toggle"
+              onClick={() => setAutoMode((v) => !v)}
+              className={`px-2.5 py-1 rounded font-bold transition ${
+                autoMode ? 'bg-emerald-600 text-white' : isDarkMode ? 'bg-slate-800 text-slate-200 hover:bg-slate-700' : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100'
+              }`}
+              title={
+                lang === 'en'
+                  ? 'Saves a step by itself when the screen changes and stays still. Set the highlight later in the editor.'
+                  : 'Сохраняет шаг сам, когда экран меняется и замирает. Подсветку потом выставите в редакторе.'
+              }
+            >
+              {autoMode ? (lang === 'en' ? 'Auto: ON' : 'Авто: ВКЛ') : lang === 'en' ? 'Auto' : 'Авто'}
+            </button>
+            <label className="flex items-center gap-1 text-[11px] opacity-90">
+              <span>{lang === 'en' ? 'Pause' : 'Пауза'}</span>
+              <select
+                value={autoPauseMs}
+                onChange={(e) => setAutoPauseMs(Number(e.target.value))}
+                className={`rounded border px-1 py-0.5 ${isDarkMode ? 'bg-slate-950 border-slate-700' : 'bg-white border-slate-300'}`}
+                title={lang === 'en' ? 'How long the screen must stay still before a step is saved' : 'Сколько экран должен стоять неподвижно, чтобы сохранился шаг'}
+              >
+                <option value={500}>0.5 s</option>
+                <option value={1000}>1 s</option>
+                <option value={2000}>2 s</option>
+              </select>
+            </label>
+            {autoMode && (
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                {lang === 'en' ? 'saved' : 'сохранено'}: {autoCount}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Footer Controls (shrink-0) */}
         <div
@@ -2192,7 +2393,10 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
                   onDrawComplete={handleBoxDrawComplete}
                   onRemoveBlurBox={handleRemoveBlurBox}
                   onUpdateBlurBox={handleUpdateBlurBox}
-                  drawMode={drawMode === 'blur' ? 'blur' : 'target'}
+                  drawMode={drawMode === 'blur' ? 'blur' : drawMode === 'extra' ? 'extra' : 'target'}
+                  extraBoxes={activeStep?.extraBoxes}
+                  extraKind={extraKind}
+                  onRemoveExtraBox={handleRemoveExtraBox}
                 />
 
                 {/* Helpful Tip Hint Pill */}
