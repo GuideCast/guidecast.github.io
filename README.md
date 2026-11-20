@@ -1,5 +1,7 @@
+**English** | [Русский](README.ru.md)
+
 # GuideCast 🚀
-### Универсальный конструктор интерактивных пошаговых руководств и тренажёров
+### A universal builder for interactive step-by-step guides and simulators
 
 [![React](https://img.shields.io/badge/React-19-61dafb.svg?style=flat-square&logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178c6.svg?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
@@ -8,157 +10,157 @@
 [![Dexie](https://img.shields.io/badge/Dexie-IndexedDB-008080.svg?style=flat-square)](https://dexie.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 
-**GuideCast** — это мощное, полностью клиентское веб-приложение для мгновенного создания интерактивных обучающих руководств, документации и тренажёров для **любого программного обеспечения, SaaS-платформ, веб-сервисов и операционных систем**.
+**GuideCast** is a powerful, fully client-side web app for instantly creating interactive tutorials, documentation and simulators for **any software, SaaS platform, web service or operating system**.
 
-Приложение работает локально прямо в браузере: все скриншоты и метаданные сохраняются в защищённую локальную базу данных IndexedDB (Dexie.js), не требуют серверной части и экспортируются в **одиночный автономный HTML-файл**, готовый для публикации или передачи пользователям.
-
----
-
-## 🌟 Ключевые возможности
-
-### 1. 🎥 Live Capture и выделение «как ножницами»
-- **Захват живого потока экрана или окна**: используйте системный диалог `navigator.mediaDevices.getDisplayMedia` для трансляции целевого окна программы.
-- **Инструмент «Ножницы»**: прямо по живому видеопотоку зажмите мышь и выделите интерактивную кнопку или область. Кадр автоматически мгновенно замораживается, сохраняется в базу и превращается в новый шаг с точными координатами.
-- **Несколько шагов на одном кадре**: если действие происходит в одном и том же окне/модале, добавляйте новые шаги без дублирования тяжёлых скриншотов.
-
-### 2. 🪟 Плавающее окно Document Picture-in-Picture
-- **Document PiP API**: вынесите панель управления записью в отдельное всегда поверх окон плавающее мини-окно (`window.documentPictureInPicture`).
-- **Запись без переключения окон**: переходите в целевую программу (любую IDE, CRM, ERP, офисный пакет), а поверх неё будет висеть компактный пульт с живым превью, кнопками быстрого захвата, выбором действия и голосовой записью.
-- **Встроенный мини-пульт**: для браузеров без поддержки Document PiP автоматически активируется элегантный внутристраничный плавающий виджет.
-
-### 3. 🎤 Бесплатный голосовой ввод (Web Speech API)
-- **0 токенов, 0 ключей, 100% бесплатно**: используется встроенный браузерный движок распознавания речи.
-- **Умный парсер голосовых команд**: произнесите:
-  - *"Нажмите кнопку Создать отчёт"* → действие `click`, элемент `Создать отчёт`, оформление: `Нажмите <b>Создать отчёт</b>.` / `Click <b>Создать отчёт</b>.`
-  - *"Введи адрес сервера"* → действие `type`, оформление: `Введите <b>адрес сервера</b> в поле ввода.`
-  - *"Выберите пункт Экспорт"* → действие `select`, оформление: `Выберите <b>Экспорт</b> из списка.`
-  - *"Обрати внимание на статус синхронизации"* → действие `look`.
-- Поддержка мгновенного переключения между **RU-RU** и **EN-US**.
-
-### 4. ✨ 3 уровня экономии ИИ (AI Economy)
-- **Уровень 0: Автономный шаблонизатор (0 токенов)**
-  Автоматическое формирование аккуратных двуязычных инструкций с `<b>...</b>` тегами по названию элемента интерфейса.
-- **Уровень 1: Пакетный промпт для бесплатных веб-чатов (ChatGPT, Claude, DeepSeek)**
-  Генерация готового структурированного промпта со всеми шагами и голосовыми черновиками проекта в 1 клик. Скопируйте промпт в любой бесплатный чат и вставьте ответный JSON — все шаги обновятся и оформятся за секунду.
-- **Уровень 2: Gemini API с технологией микро-кропов (Token Saver)**
-  Вместо отправки полноразмерного 2–4 MB скриншота, инструмент вырезает миниатюрный контекстный фрагмент целевой области (~15–25 КБ JPEG) с красной рамкой. Это экономит **в 20–50 раз больше токенов и трафика**, а модель Gemini точно считывает надпись кнопки и формирует двуязычные описания.
-
-### 5. 🛡️ Сквозной блюр и защита приватности (`subtractRect`)
-- **Универсальные пресеты размытия**:
-  - Узкая левая панель навигации (4.5% ширины);
-  - Широкое дерево проектов и папок (14% ширины);
-  - Профиль пользователя, email и аватар (правый верхний угол);
-  - Верхняя строка навигации и корпоративное имя клиента.
-- **Сквозной блюр (`globalBlurBoxes`)**: задаётся один раз и размывает конфиденциальные зоны на **всех кадрах проекта**.
-- **Локальный блюр и маски-плашки**: возможность размыть или закрасить непрозрачной плашкой специфические поля на отдельном кадре.
-- **Автоматическое вычитание активной кнопки (`subtractRect`)**: при экспорте публичной версии гайда сквозной блюр размывает всё конфиденциальное, но автоматически делает чистое «окошко» для текущей активной кнопки шага, чтобы пользователь видел, куда нажимать (если не включён флаг `keepBlur`).
-
-### 6. 📦 Автономный экспорт в единый HTML
-- **Один автономный `.html` файл**: все CSS-стили, векторные SVG-иконки, шрифты и скриншоты (в виде оптимизированного Base64) упакованы в 1 файл.
-- **Режим тренажёра (Interactive Simulator)**: кликабельная область с пульсирующей подсветкой переводит пользователя на следующий шаг только при правильном нажатии на элемент интерфейса.
-- **Двуязычность**: мгновенное переключение RU / EN в шапке гайда.
-- **Полная обратная совместимость**: экспорт и импорт в формат `steps.json` с координатами от `display_width: 2000` для совместимости с внешними скриптами сборки.
+It runs locally in your browser: screenshots and metadata are stored in a local IndexedDB database (Dexie.js), no backend is required, and a project exports to a **single self-contained HTML file** ready to publish or hand to users.
 
 ---
 
-## 🛠️ Архитектура и структура проекта
+## 🌟 Key features
+
+### 1. 🎥 Live Capture with a "snipping tool" selection
+- **Capture a live screen or window stream** using the system dialog (`navigator.mediaDevices.getDisplayMedia`).
+- **Snipping tool**: drag over a button or area directly on the live video. The frame freezes instantly, is saved to the database and becomes a new step with exact coordinates.
+- **Several steps on one frame**: when the action happens in the same window or modal, add new steps without duplicating heavy screenshots.
+
+### 2. 🪟 Floating Document Picture-in-Picture window
+- **Document PiP API**: move the recording controls into a separate always-on-top mini window (`window.documentPictureInPicture`).
+- **Record without switching windows**: work in the target program (any IDE, CRM, ERP or office suite) while a compact remote with a live preview, quick-capture buttons, action picker and voice recording floats above it.
+- **Built-in fallback**: browsers without Document PiP get an in-page floating widget automatically.
+
+### 3. 🎤 Free voice input (Web Speech API)
+- **0 tokens, 0 keys, 100% free**: uses the browser's built-in speech recognition.
+- **Smart voice-command parser**. Say:
+  - *"Click the Create report button"* → action `click`, element `Create report`, text: `Click <b>Create report</b>.`
+  - *"Enter the server address"* → action `type`, text: `Enter <b>server address</b> in the input field.`
+  - *"Select the Export item"* → action `select`, text: `Select <b>Export</b> from the list.`
+  - *"Note the sync status"* → action `look`.
+- Instant switching between **RU-RU** and **EN-US** recognition.
+
+### 4. ✨ 3 levels of AI economy
+- **Level 0: offline templater (0 tokens)**
+  Automatically produces tidy bilingual instructions with `<b>...</b>` tags from the UI element's name.
+- **Level 1: batch prompt for free web chats (ChatGPT, Claude, DeepSeek)**
+  One click generates a structured prompt with all steps and voice drafts of the project. Paste it into any free chat, then paste the JSON reply back, and every step is updated and formatted in seconds.
+- **Level 2: Gemini API with micro-crops (Token Saver)**
+  Instead of sending a full 2–4 MB screenshot, the tool cuts out a small context fragment of the target area (~15–25 KB JPEG) with a red frame. That saves **20–50× tokens and traffic**, and Gemini still reads the button label and writes bilingual descriptions.
+
+### 5. 🛡️ Global blur and privacy protection (`subtractRect`)
+- **Universal blur presets**:
+  - narrow left navigation bar (4.5% of width);
+  - wide project and folder tree (14% of width);
+  - user profile, email and avatar (top-right corner);
+  - top navigation bar and the client's corporate name.
+- **Global blur (`globalBlurBoxes`)**: set once, applied to confidential zones on **every frame of the project**.
+- **Local blur and cover masks**: blur or paint over specific fields on a single frame.
+- **Automatic active-button cut-out (`subtractRect`)**: when exporting the public version, global blur hides everything confidential but leaves a clean "window" over the step's active button so users can see where to click (unless the `keepBlur` flag is on).
+
+### 6. 📦 Self-contained export to one HTML file
+- **A single `.html` file**: all CSS, vector SVG icons, fonts and screenshots (optimized Base64) are packed into one file.
+- **Interactive simulator mode**: a clickable area with a pulsing highlight moves the user to the next step only when the correct UI element is clicked.
+- **Bilingual**: switch RU / EN instantly in the guide header.
+- **Full backward compatibility**: import and export `steps.json` with coordinates based on `display_width: 2000`, compatible with external build scripts.
+
+---
+
+## 🛠️ Architecture and project structure
 
 ```text
 guidecast.github.io/
 ├── .github/
 │   └── workflows/
-│       └── deploy.yml             # GitHub Actions CI/CD для GitHub Pages
+│       └── deploy.yml             # GitHub Actions CI/CD for GitHub Pages
 ├── src/
 │   ├── components/
 │   │   ├── capture/
-│   │   │   └── LiveCaptureWorkspace.tsx # Живой захват, PiP окно, ножницы
+│   │   │   └── LiveCaptureWorkspace.tsx # Live capture, PiP window, snipping tool
 │   │   └── editor/
-│   │       └── AiAndPrivacyModal.tsx    # Модальное окно сквозного блюра и ИИ
+│   │       └── AiAndPrivacyModal.tsx    # Global blur and AI dialog
 │   ├── db/
-│   │   └── database.ts            # Слой хранения Dexie.js (IndexedDB)
+│   │   └── database.ts            # Dexie.js (IndexedDB) storage layer
 │   ├── services/
-│   │   ├── aiAssistantService.ts  # 3 уровня ИИ, микро-кропы, пресеты блюра
-│   │   ├── speechService.ts       # Web Speech API контроллер и парсер команд
-│   │   ├── pipRecorderService.ts  # Document Picture-in-Picture контроллер
-│   │   └── importerExporter.ts    # Генератор автономного HTML и steps.json
+│   │   ├── aiAssistantService.ts  # 3 AI levels, micro-crops, blur presets
+│   │   ├── speechService.ts       # Web Speech API controller and command parser
+│   │   ├── pipRecorderService.ts  # Document Picture-in-Picture controller
+│   │   └── importerExporter.ts    # Standalone HTML and steps.json generator
 │   ├── types/
-│   │   └── guide.ts               # Типы проектов, шагов, координат и ассетов
-│   ├── App.tsx                    # Корневой интерфейс приложения
-│   ├── main.tsx                   # Точка входа React
-│   └── index.css                  # Стили Tailwind CSS
-├── index.html                     # Главный HTML шаблон
-├── package.json                   # Зависимости и скрипты
-├── tsconfig.json                  # Конфигурация TypeScript
-└── vite.config.ts                 # Конфигурация Vite (относительные пути base: './')
+│   │   └── guide.ts               # Types for projects, steps, coordinates, assets
+│   ├── App.tsx                    # Root application UI
+│   ├── main.tsx                   # React entry point
+│   └── index.css                  # Tailwind CSS styles
+├── index.html                     # Main HTML template
+├── package.json                   # Dependencies and scripts
+├── tsconfig.json                  # TypeScript configuration
+└── vite.config.ts                 # Vite configuration (relative paths, base: './')
 ```
 
 ---
 
-## 🚀 Быстрый старт (Локальная разработка)
+## 🚀 Quick start (local development)
 
-### Требования
-- **Node.js**: версии 18+ (рекомендуется 20 LTS)
-- **Браузер**: современный Chromium-браузер (Google Chrome, Microsoft Edge, Brave, Opera) для полной поддержки Web Speech API и Document Picture-in-Picture.
+### Requirements
+- **Node.js** 18+ (20 LTS recommended)
+- **Browser**: a modern Chromium browser (Google Chrome, Microsoft Edge, Brave, Opera) for full Web Speech API and Document Picture-in-Picture support.
 
-### Установка и запуск
+### Install and run
 
-1. Склонируйте репозиторий:
+1. Clone the repository:
    ```bash
    git clone https://github.com/GuideCast/guidecast.github.io.git
    cd guidecast.github.io
    ```
 
-2. Установите зависимости:
+2. Install dependencies:
    ```bash
    npm install
    ```
 
-3. Запустите локальный сервер разработки:
+3. Start the dev server:
    ```bash
    npm run dev
    ```
-   Откройте в браузере адрес `http://localhost:5173`.
+   Open `http://localhost:5173` in your browser.
 
-4. Сборка для публикации:
+4. Build for publishing:
    ```bash
    npm run build
    ```
-   Собранные статические файлы будут находиться в папке `dist/`.
+   The static files will be in the `dist/` folder.
 
 ---
 
-## 📖 Как пользоваться
+## 📖 How to use
 
-1. **Создание или импорт проекта**:
-   - Нажмите **«+ Новый гайд»** для чистого проекта или **«Импорт папки (steps.json)»** для загрузки ранее созданного руководства со скриншотами.
-   - Также доступна кнопка **«Загрузить демо-гайд»** для быстрого ознакомления с возможностями.
-2. **Вкладка «1. Запись (Capture)»**:
-   - Нажмите **«Начать захват окна экрана»** и выберите окно целевой программы.
-   - Нажмите **«Плавающее окно (PiP)»**, чтобы пульт управления оставался поверх окон.
-   - Выделите мышкой нужную кнопку на экране — кадр зафиксируется, и шаг добавится автоматически.
-3. **Вкладка «2. Редактор (Editor)»**:
-   - Выберите шаг из списка слева.
-   - Переключайте режимы рисования мышкой прямо на холсте:
-     - 🔴 **Рамка шага (Target Box)**: точная зона клика;
-     - 🌫 **Блюр на этом кадре (Step Blur)**: скрытие чувствительных данных на данном скриншоте;
-     - 📌 **Сквозной блюр (Global Blur)**: сокрытие корпоративной панели на всех кадрах;
-     - 🎨 **Маска-ластик (Mask)**: закрашивание непрозрачной плашкой.
-   - Используйте кнопку **«🎤 Диктовать голосом»** для наговаривания действий.
-   - Нажмите **«✨ Авто-описание по микро-кропу»** для интеллектуального распознавания через Gemini.
-4. **Вкладка «3. Плеер и Экспорт»**:
-   - Проверьте интерактивный просмотр в режиме тренажёра.
-   - Нажмите **«guide-public.html»** для скачивания полностью готового зашифрованного и размытого однофайлового руководства.
-
----
-
-## 🔒 Безопасность и конфиденциальность
-
-- **Все данные хранятся только у вас**: ни скриншоты, ни тексты не отправляются на удалённые сервера без вашего явного запроса.
-- **IndexedDB**: проект надёжно сохраняется в локальной песочнице вашего браузера.
-- **Gemini API (BYOK - Bring Your Own Key)**: ключ API хранится только в вашем локальном браузере (`localStorage`) и отправляет исключительно микроскопический фрагмент вырезанной кнопки.
+1. **Create or import a project**:
+   - Click **"+ New guide"** for a blank project, or **"Import folder (steps.json)"** to load a previously created guide with screenshots.
+   - **"Load demo guide"** is available for a quick tour.
+2. **Tab "1. Capture"**:
+   - Click **"Start window capture"** and choose the target program's window.
+   - Click **"Floating window (PiP)"** to keep the control panel above other windows.
+   - Drag over the button you need on screen. The frame is captured and a step is added automatically.
+3. **Tab "2. Editor"**:
+   - Pick a step from the list on the left.
+   - Switch drawing modes right on the canvas:
+     - 🔴 **Target Box**: the exact click zone;
+     - 🌫 **Step Blur**: hide sensitive data on this screenshot only;
+     - 📌 **Global Blur**: hide the corporate panel on all frames;
+     - 🎨 **Mask**: paint over an area with an opaque plate.
+   - Use **"🎤 Dictate"** to speak the actions.
+   - Click **"✨ Auto-description from micro-crop"** for smart recognition via Gemini.
+4. **Tab "3. Player and Export"**:
+   - Check the interactive preview in simulator mode.
+   - Click **"guide-public.html"** to download the finished single-file guide with blur applied.
 
 ---
 
-## 📄 Лицензия
+## 🔒 Security and privacy
 
-Распространяется под свободной лицензией **MIT**. Подробности в файле [LICENSE](LICENSE).
+- **Your data stays with you**: neither screenshots nor texts are sent to remote servers without your explicit request.
+- **IndexedDB**: the project is stored in your browser's local sandbox.
+- **Gemini API (BYOK, bring your own key)**: the API key is kept only in your browser (`localStorage`), and only a tiny cut-out fragment of the button is sent.
+
+---
+
+## 📄 License
+
+Released under the **MIT** license. See [LICENSE](LICENSE).
