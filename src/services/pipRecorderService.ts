@@ -56,23 +56,23 @@ export function onPipClose(listener: () => void): () => void {
  */
 export function syncStylesToPip(pipWin: Window) {
   try {
-    // 1. Copy all style and link[rel=stylesheet] elements
-    const elements = document.querySelectorAll('style, link[rel="stylesheet"]');
-    elements.forEach((el) => {
-      pipWin.document.head.appendChild(el.cloneNode(true));
-    });
-
-    // 2. Fallback: inspect document.styleSheets for inline rules created dynamically
+    // Copy the rules the main page has ALREADY loaded (document.styleSheets), instead of cloning <link> tags:
+    // a cloned <link> makes the floating window download the CSS file again, and right after a new deploy the
+    // old hashed file may be gone (404), leaving the recorder without any styling. <link> is only a fallback
+    // for sheets whose rules cannot be read.
     [...document.styleSheets].forEach((styleSheet) => {
       try {
-        if (!styleSheet.href && styleSheet.cssRules) {
-          const style = pipWin.document.createElement('style');
-          const rules = [...styleSheet.cssRules].map((r) => r.cssText).join('\n');
-          style.textContent = rules;
-          pipWin.document.head.appendChild(style);
-        }
+        const rules = [...styleSheet.cssRules].map((r) => r.cssText).join('\n');
+        const style = pipWin.document.createElement('style');
+        style.textContent = rules;
+        pipWin.document.head.appendChild(style);
       } catch {
-        // Cross-origin sheets might throw, ignore safely
+        if (styleSheet.href) {
+          const link = pipWin.document.createElement('link');
+          link.rel = 'stylesheet';
+          link.href = styleSheet.href;
+          pipWin.document.head.appendChild(link);
+        }
       }
     });
 

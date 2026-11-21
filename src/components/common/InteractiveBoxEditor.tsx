@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { EXTRA_KIND_STYLE } from '../../types/guide';
-import type { BoxRect, ActionType, ExtraBox, ExtraBoxKind } from '../../types/guide';
+import type { BoxRect, ActionType } from '../../types/guide';
 
 export interface InteractiveBoxEditorProps {
   imageUrl: string;
@@ -24,14 +23,10 @@ export interface InteractiveBoxEditorProps {
   onAddMaskBox?: (box: BoxRect) => void;
   onRemoveMaskBox?: (index: number) => void;
   onUpdateMaskBox?: (index: number, box: BoxRect) => void;
-  extraBoxes?: ExtraBox[];
-  extraKind?: ExtraBoxKind;
-  onAddExtraBox?: (box: BoxRect) => void;
-  onRemoveExtraBox?: (index: number) => void;
 
   // Draw mode when dragging outside current box
-  drawMode?: 'target' | 'blur' | 'globalBlur' | 'mask' | 'extra' | 'none';
-  onDrawComplete?: (box: BoxRect, mode: 'target' | 'blur' | 'globalBlur' | 'mask' | 'extra') => void;
+  drawMode?: 'target' | 'blur' | 'globalBlur' | 'mask' | 'none';
+  onDrawComplete?: (box: BoxRect, mode: 'target' | 'blur' | 'globalBlur' | 'mask') => void;
 
   // Display configuration
   stepNumber?: number;
@@ -140,10 +135,6 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
   onAddMaskBox,
   onRemoveMaskBox,
   onUpdateMaskBox,
-  extraBoxes,
-  extraKind = 'type',
-  onAddExtraBox,
-  onRemoveExtraBox,
   drawMode = 'target',
   onDrawComplete,
   stepNumber,
@@ -654,7 +645,7 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
     const w = Math.abs(currentPctX - startPctX);
     const h = Math.abs(currentPctY - startPctY);
 
-    if (drawMode === 'blur' || drawMode === 'globalBlur' || drawMode === 'mask' || drawMode === 'extra') {
+    if (drawMode === 'blur' || drawMode === 'globalBlur' || drawMode === 'mask') {
       // Urgent fix: Do NOT create blur/mask box on single click / minimal drag!
       // Must be an intentionally dragged rectangular area.
       if (w < 1.5 || h < 1.5) {
@@ -675,9 +666,6 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
       } else if (drawMode === 'mask') {
         onAddMaskBox?.(finalBox);
         onDrawComplete?.(finalBox, 'mask');
-      } else if (drawMode === 'extra') {
-        onAddExtraBox?.(finalBox);
-        onDrawComplete?.(finalBox, 'extra');
       }
       return;
     }
@@ -803,47 +791,6 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
                   }}
                   className="absolute -top-2.5 -right-2.5 w-5 h-5 bg-rose-600 hover:bg-rose-500 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md pointer-events-auto z-50 cursor-pointer transition hover:scale-110 active:scale-95"
                   title={uiLang === 'ru' ? 'Удалить сквозной блюр' : 'Remove global blur'}
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          );
-        })}
-
-        {/* Extra colored areas: enter text / do not click / note */}
-        {extraBoxes?.map((b, idx) => {
-          const st = EXTRA_KIND_STYLE[b.kind] || EXTRA_KIND_STYLE.note;
-          return (
-            <div
-              key={`extra-${idx}`}
-              data-testid="extra-box"
-              className="absolute rounded select-none z-10 pointer-events-none"
-              style={{
-                left: `${b.x}%`,
-                top: `${b.y}%`,
-                width: `${b.w}%`,
-                height: `${b.h}%`,
-                border: `3px ${st.dash ? 'dashed' : 'solid'} ${st.color}`,
-                backgroundColor: st.fill,
-              }}
-            >
-              <div
-                className="absolute -top-3 -left-1 text-white text-[11px] font-bold px-1.5 py-0.5 rounded shadow pointer-events-none"
-                style={{ backgroundColor: st.color }}
-              >
-                {st.badge}
-              </div>
-              {onRemoveExtraBox && !readOnly && (
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRemoveExtraBox(idx);
-                  }}
-                  className="absolute -top-3 -right-2 w-5 h-5 rounded-full bg-slate-900 text-white text-xs leading-none flex items-center justify-center shadow pointer-events-auto"
-                  title={uiLang === 'ru' ? 'Удалить область' : 'Remove area'}
                 >
                   ×
                 </button>
@@ -1000,14 +947,9 @@ export const InteractiveBoxEditor: React.FC<InteractiveBoxEditorProps> = ({
                 ? 'border-purple-400 bg-purple-500/20 backdrop-blur-sm'
                 : drawMode === 'mask'
                 ? 'border-slate-400 bg-slate-900/80'
-                : drawMode === 'extra'
-                ? ''
                 : 'border-rose-500 bg-rose-500/20'
             }`}
             style={{
-              ...(drawMode === 'extra'
-                ? { borderColor: EXTRA_KIND_STYLE[extraKind].color, backgroundColor: EXTRA_KIND_STYLE[extraKind].fill }
-                : {}),
               left: `${Math.min(dragState.startPctX, dragState.currentPctX)}%`,
               top: `${Math.min(dragState.startPctY, dragState.currentPctY)}%`,
               width: `${Math.abs(dragState.currentPctX - dragState.startPctX)}%`,

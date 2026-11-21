@@ -249,7 +249,7 @@ export const UI_TEXT = {
       step2: {
         title: 'Caption',
         desc: 'For each snapshot, check where to click and write one short sentence for the student.',
-        point1: 'Drag the red box over the button to click. The small arrow shows the mouse pointer. Need more? Add blue (type here), grey dashed (do not click) or orange (notice) areas.',
+        point1: 'Drag the red box over the button. The small arrow shows the mouse pointer.',
         point2: 'Type the caption or press the microphone and say it out loud.',
       },
       step3: {
@@ -443,7 +443,7 @@ export const UI_TEXT = {
       step2: {
         title: 'Подпишите',
         desc: 'На каждом снимке проверьте, куда нажать, и напишите одно короткое предложение для студента.',
-        point1: 'Перетащите красную рамку на кнопку, куда нажать. Маленькая стрелка показывает курсор мыши. Нужно больше? Добавьте синюю (ввести текст), серую пунктирную (не нажимать) или оранжевую (обратить внимание) области.',
+        point1: 'Перетащите красную рамку на кнопку. Маленькая стрелка показывает курсор мыши.',
         point2: 'Напечатайте подпись или нажмите на микрофон и произнесите её вслух.',
       },
       step3: {
