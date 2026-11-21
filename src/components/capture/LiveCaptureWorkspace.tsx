@@ -589,12 +589,14 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
     try {
       if (!pipCollapsed) {
         pipSavedRectRef.current = { w: win.outerWidth, h: win.outerHeight, x: win.screenX, y: win.screenY };
-        const w = 300;
-        const h = 120;
+        const w = 360;
+        const h = 150;
         win.resizeTo(w, h);
+        win.document.body.style.overflow = 'hidden'; // no scrollbars on the small bar
         const scr = window.screen as Screen & { availLeft?: number; availTop?: number };
         win.moveTo((scr.availLeft ?? 0) + scr.availWidth - w - 16, (scr.availTop ?? 0) + scr.availHeight - h - 16);
       } else {
+        win.document.body.style.overflow = 'auto';
         const saved = pipSavedRectRef.current;
         if (saved) {
           win.resizeTo(saved.w, saved.h);
