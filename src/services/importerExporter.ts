@@ -105,9 +105,15 @@ function extractJsStructure(html: string, varName: string): any {
   const match = regex.exec(html);
   if (!match) return null;
 
-  const startChar = match[1];
+  return parseBalancedAt(html, match.index + match[0].length - 1);
+}
+
+/**
+ * Parse the JS object/array literal that starts at html[startIndex] ('{' or '[').
+ */
+function parseBalancedAt(html: string, startIndex: number): any {
+  const startChar = html[startIndex];
   const endChar = startChar === '[' ? ']' : '}';
-  const startIndex = match.index + match[0].length - 1;
 
   let depth = 0;
   let inString: string | null = null;
@@ -163,6 +169,65 @@ function extractJsStructure(html: string, varName: string): any {
   }
 
   return null;
+}
+
+/**
+ * The pinned note is typed as plain text with two marks: **bold** and `code`.
+ * Players made elsewhere keep it as HTML; these two helpers convert in both directions.
+ */
+function noteHtmlToText(html: unknown): string {
+  if (typeof html !== 'string') return '';
+  return html
+    .replace(/<\/?(b|strong)>/gi, '**')
+    .replace(/<\/?code>/gi, '`')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .trim();
+}
+
+function noteTextToHtml(text: string | undefined): string {
+  if (!text) return '';
+  return escapeHtml(text)
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+/** [[x, y, w, h], ...] in percent (player format) -> BoxRect[]. Bad rows are skipped. */
+function percentArrayToBoxes(raw: unknown): BoxRect[] {
+  if (!Array.isArray(raw)) return [];
+  const out: BoxRect[] = [];
+  for (const b of raw) {
+    if (Array.isArray(b) && b.length >= 4) {
+      out.push({ x: Number(b[0]) || 0, y: Number(b[1]) || 0, w: Number(b[2]) || 0, h: Number(b[3]) || 0 });
+    } else if (b && typeof b === 'object') {
+      out.push({ x: Number((b as any).x) || 0, y: Number((b as any).y) || 0, w: Number((b as any).w) || 0, h: Number((b as any).h) || 0 });
+    }
+  }
+  return out.filter((b) => b.w > 0 && b.h > 0);
+}
+
+/**
+ * Collect every screenshot of a standalone guide: the main `const IMAGES = {...}` plus all
+ * `Object.assign(IMAGES, {...})` blocks (big guides split their pictures over several <script> tags).
+ */
+function extractAllImages(html: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const first = extractJsStructure(html, 'IMAGES');
+  if (first && typeof first === 'object') Object.assign(out, first);
+  const re = /Object\.assign\(\s*IMAGES\s*,\s*\{/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) {
+    const startIndex = m.index + m[0].length - 1;
+    try {
+      const part = parseBalancedAt(html, startIndex);
+      if (part && typeof part === 'object') Object.assign(out, part);
+    } catch {
+      // skip a block we cannot parse
+    }
+  }
+  return out;
 }
 
 /**
@@ -512,11 +577,30 @@ export async function exportStandaloneHtml(
       en: textEn,
       ru: textRu,
       chapterTitle: st.chapterTitle,
+      chapterTitleRu: st.chapterTitle ? st.chapterTitleRu || undefined : undefined,
       cursorPos: st.cursorPos
         ? [Number(st.cursorPos.x.toFixed(2)), Number(st.cursorPos.y.toFixed(2))]
         : undefined,
+      code: st.code ? st.code : undefined,
+      // Public export burns step blur into the picture; the private one keeps it as movable overlays
+      blur:
+        !options.publicBlur && st.blur && st.blur.length
+          ? st.blur.map((b) => [Number(b.x.toFixed(2)), Number(b.y.toFixed(2)), Number(b.w.toFixed(2)), Number(b.h.toFixed(2))] as [number, number, number, number])
+          : undefined,
     };
   });
+
+  // A slice starting inside a section keeps that section's name on its first step
+  if (isSliced && steps.length > 0 && !steps[0].chapterTitle) {
+    const startIdx = project.steps.indexOf(activeSteps[0]);
+    for (let k = startIdx - 1; k >= 0; k--) {
+      if (project.steps[k].chapterTitle) {
+        steps[0].chapterTitle = project.steps[k].chapterTitle;
+        steps[0].chapterTitleRu = project.steps[k].chapterTitleRu || undefined;
+        break;
+      }
+    }
+  }
 
   const isSingleLang = steps.length > 0 && steps.every((s) => s.en === s.ru);
 
@@ -534,6 +618,8 @@ export async function exportStandaloneHtml(
     sub_en: subEn,
     sub_ru: subRu,
     default_lang: project.defaultLang,
+    note_en: noteTextToHtml(project.pinnedNoteEn?.trim() || project.pinnedNoteRu?.trim()) || undefined,
+    note_ru: noteTextToHtml(project.pinnedNoteRu?.trim() || project.pinnedNoteEn?.trim()) || undefined,
   };
 
   const stepsJson = safeJsonForScript(steps);
@@ -565,10 +651,13 @@ export async function exportStandaloneHtml(
       subRu: project.subRu,
       defaultLang: project.defaultLang,
       globalBlurBoxes: project.globalBlurBoxes || [],
+      pinnedNoteEn: project.pinnedNoteEn,
+      pinnedNoteRu: project.pinnedNoteRu,
       steps: project.steps.map((st) => ({
         id: st.id,
         screenshotId: st.screenshotId,
         chapterTitle: st.chapterTitle,
+        chapterTitleRu: st.chapterTitleRu,
         act: st.act,
         box: st.box,
         cursorPos: st.cursorPos,
@@ -576,6 +665,8 @@ export async function exportStandaloneHtml(
         ru: st.ru,
         voiceDraft: st.voiceDraft,
         keepBlur: st.keepBlur,
+        code: st.code,
+        blur: st.blur,
       })),
       screenshots: sourceShots,
     };
@@ -670,6 +761,45 @@ body.fs .speech{margin-top:4px}
   .txt p{font-size:15px}
   .panel{padding:12px}
 }
+/* sections bar, copyable code, pinned note */
+.sections{display:none;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+.sections.show{display:flex}
+.sections button{border:1px solid var(--line);background:var(--card);color:var(--muted);padding:5px 11px;border-radius:8px;font:inherit;font-size:13px;cursor:pointer;transition:.15s}
+.sections button:hover{color:var(--ink);border-color:var(--accent)}
+.sections button[aria-current="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+body.fs .sections.show{margin:0;padding:6px 140px 6px 12px;background:var(--card);border-bottom:1px solid var(--line);flex:none;z-index:4}
+body.fs .sections button{padding:4px 10px;font-size:12px}
+.codebox{display:none;margin-top:8px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;align-items:flex-start;gap:10px}
+.codebox.show{display:flex}
+.codebox pre{margin:0;flex:1;font:13px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;word-break:break-word;color:var(--ink);user-select:text}
+.codebox button{flex:none;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:4px 10px;border-radius:6px;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.codebox button:hover{border-color:var(--accent);color:var(--accent)}
+body.fs .codebox{margin-top:4px;padding:5px 8px}
+body.fs .codebox pre{font-size:12px;max-height:54px;overflow:auto}
+.wstip{margin:0 0 10px;padding:7px 12px;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;background:var(--card);font-size:13px;color:var(--muted)}
+.wstip b{color:var(--ink)}
+.wstip code{background:var(--chip);padding:1px 5px;border-radius:4px;font-size:12px}
+body.fs .wstip{display:none!important}
+.lesson select{padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit;max-width:100%}
+/* frame editor (Ctrl+Shift+E) */
+.bl{position:absolute;backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);background:rgba(240,242,245,0.28);border-radius:4px;pointer-events:none;z-index:1}
+body.edit-mode .hl{pointer-events:auto;cursor:move;animation:none;outline:2px dashed #fff;z-index:3}
+body.edit-mode .bl{pointer-events:auto;cursor:move;outline:1.5px dashed #0ea5e9;z-index:2}
+.eh{position:absolute;width:11px;height:11px;background:#fff;border:2px solid var(--hl);border-radius:2px;box-sizing:border-box;z-index:5}
+.bl .eh{border-color:#0ea5e9}
+.bdel{position:absolute;top:-9px;right:-9px;width:18px;height:18px;border-radius:50%;background:#0ea5e9;color:#fff;border:0;font:700 12px/18px sans-serif;text-align:center;cursor:pointer;z-index:6;padding:0}
+.eh[data-d="nw"]{top:-6px;left:-6px;cursor:nwse-resize}
+.eh[data-d="ne"]{top:-6px;right:-6px;cursor:nesw-resize}
+.eh[data-d="se"]{bottom:-6px;right:-6px;cursor:nwse-resize}
+.eh[data-d="sw"]{bottom:-6px;left:-6px;cursor:nesw-resize}
+.eh[data-d="n"]{top:-6px;left:50%;transform:translateX(-50%);cursor:ns-resize}
+.eh[data-d="s"]{bottom:-6px;left:50%;transform:translateX(-50%);cursor:ns-resize}
+.eh[data-d="w"]{left:-6px;top:50%;transform:translateY(-50%);cursor:ew-resize}
+.eh[data-d="e"]{right:-6px;top:50%;transform:translateY(-50%);cursor:ew-resize}
+.ebar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;border:1px solid var(--hl);border-radius:10px;background:var(--card);font-size:13px}
+.ebar code{background:var(--chip);padding:2px 6px;border-radius:4px;font-size:12px}
+.ebar button{border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:5px 10px;border-radius:6px;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.ebar button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -695,13 +825,17 @@ body.fs .speech{margin-top:4px}
     <select id="chapterSelect"></select>
   </div>
 
+  <div class="wstip" id="wstip" style="display:none"></div>
+
   <div class="lesson" id="lesson">
+    <select id="lsec" style="display:none"></select>
     <span id="lfrom"></span> <input type="number" id="lf" min="1" value="1">
     <span id="lto"></span> <input type="number" id="lt" min="1" value="1">
     <button id="lsave"></button>
     <span class="lnote" id="lnote"></span>
   </div>
 
+  <div class="sections" id="sections"></div>
   <div class="stage">
     <div class="shotbox" id="shotbox">
       <div class="shot" id="shot">
@@ -716,6 +850,7 @@ body.fs .speech{margin-top:4px}
         <div id="chapterBadgeContainer"></div>
         <span class="chip" id="chip"></span>
         <p id="text"></p>
+        <div class="codebox" id="codebox"><pre id="codepre"></pre><button id="copybtn" type="button"></button></div>
         <div class="speech" id="speech">
           <button class="fsbtn say" id="say" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg><span id="saylbl"></span></button>
           <label><input type="checkbox" id="autoread"> <span id="autolbl"></span></label>
@@ -747,7 +882,8 @@ const I18N = {
     click:"Click",type:"Type",drag:"Drag",select:"Select",scroll:"Scroll",look:"Notice",step:"Step",
     chapters:"Chapters",trainerOn:"Trainer Mode (Active)",trainerOff:"Overview Mode",
     jumpTo:"Jump to chapter...",
-    say:"Listen",stopSay:"Stop",auto:"Read steps aloud automatically"
+    say:"Listen",stopSay:"Stop",auto:"Read steps aloud automatically",
+    copy:"Copy",copied:"Copied!",pickSection:"Cut by section..."
   },
   ru:{
     title:"Интерактивная инструкция",sub:"Пошаговое интерактивное руководство",
@@ -759,7 +895,8 @@ const I18N = {
     click:"Нажать",type:"Ввести",drag:"Протянуть",select:"Выбрать",scroll:"Прокрутить",look:"Обратите внимание",step:"Шаг",
     chapters:"Разделы",trainerOn:"Режим тренажёра (вкл)",trainerOff:"Режим обзора",
     jumpTo:"Перейти к разделу...",
-    say:"Слушать",stopSay:"Стоп",auto:"Читать шаги вслух автоматически"
+    say:"Слушать",stopSay:"Стоп",auto:"Читать шаги вслух автоматически",
+    copy:"Копировать",copied:"Скопировано!",pickSection:"Нарезать по разделу..."
   }
 };
 
@@ -773,24 +910,46 @@ const LANG_KEY = "lang:" + (META.title_en || META.title_ru || "");
 ${isSingleLang ? '' : 'try { const s = localStorage.getItem(LANG_KEY); if(s && I18N[s]) lang = s; } catch(e){}'}
 
 let i = 0;
+let editOn = false;
 let trainerMode = ${options.interactiveMode === false ? 'false' : 'true'};
 
 const $ = id => document.getElementById(id);
 
+function escHtml(s) {
+  return String(s).split("&").join("&amp;").split("<").join("&lt;").split(">").join("&gt;");
+}
+function safeJson(o) {
+  return JSON.stringify(o).replace(/</g, "\\\\u003c");
+}
+
+// Sections: a step with a chapterTitle starts a new section; step 1 always starts one.
+function secTitle(st) {
+  return (lang === "ru" ? (st.chapterTitleRu || st.chapterTitle) : (st.chapterTitle || st.chapterTitleRu)) || "";
+}
+function getSections() {
+  const out = [];
+  STEPS.forEach((st, idx) => {
+    if (st.chapterTitle || st.chapterTitleRu) out.push({ start: idx, st: st });
+  });
+  if (out.length && out[0].start !== 0) out.unshift({ start: 0, st: { chapterTitle: "Start", chapterTitleRu: "Начало" } });
+  for (let k = 0; k < out.length; k++) out[k].end = k + 1 < out.length ? out[k + 1].start : STEPS.length;
+  return out;
+}
+
 // Populate chapters select
 function updateChaptersSelect() {
   const sel = $("chapterSelect");
-  sel.innerHTML = \`<option value="">-- \${I18N[lang].jumpTo} --</option>\`;
-  const seen = new Set();
-  STEPS.forEach((st, idx) => {
-    if (st.chapterTitle && !seen.has(st.chapterTitle)) {
-      seen.add(st.chapterTitle);
-      const opt = document.createElement("option");
-      opt.value = idx;
-      opt.textContent = \`\${idx + 1}. \${st.chapterTitle}\`;
-      sel.appendChild(opt);
-    }
-  });
+  let h = '<option value="">-- ' + I18N[lang].jumpTo + ' --</option>';
+  getSections().forEach(sc => { h += '<option value="' + sc.start + '">' + (sc.start + 1) + ". " + escHtml(secTitle(sc.st)) + "</option>"; });
+  sel.innerHTML = h;
+}
+
+function fillLessonSections() {
+  const sel = $("lsec"), secs = getSections();
+  sel.style.display = secs.length >= 2 ? "" : "none";
+  let h = '<option value="">' + I18N[lang].pickSection + "</option>";
+  secs.forEach((sc, k) => { h += '<option value="' + k + '">' + escHtml(secTitle(sc.st)) + " (" + (sc.start + 1) + "-" + sc.end + ")</option>"; });
+  sel.innerHTML = h;
 }
 
 function render() {
@@ -820,25 +979,50 @@ function render() {
   $("chip").textContent = t[s.act] || s.act;
 
   const bContainer = $("chapterBadgeContainer");
-  if (s.chapterTitle) {
+  if (secTitle(s)) {
     bContainer.textContent = "";
     const badge = document.createElement("span");
     badge.className = "chapter-badge";
-    badge.textContent = "📑 " + s.chapterTitle;
+    badge.textContent = "📑 " + secTitle(s);
     bContainer.appendChild(badge);
   } else {
     bContainer.innerHTML = "";
   }
 
   $("text").innerHTML = s[lang] || s.ru || s.en || "";
+  if (s.code) {
+    $("codepre").textContent = s.code;
+    $("copybtn").textContent = t.copy;
+    $("codebox").classList.add("show");
+  } else {
+    $("codebox").classList.remove("show");
+  }
+  const note = META["note_" + lang] || META.note_en || META.note_ru || "";
+  $("wstip").innerHTML = note;
+  $("wstip").style.display = note ? "" : "none";
+  renderBlurs();
+  if (editOn) updateEditInfo();
   $("prev").textContent = t.prev;
   $("prev").disabled = i === 0;
   $("next").textContent = last ? t.done : t.next;
   $("hint").textContent = t.hint;
 
-  $("dots").innerHTML = STEPS.map((_,k)=>
-    \`<button aria-label="\${t.step} \${k+1}" \${k===i?'aria-current="true"':''} data-k="\${k}"></button>\`
-  ).join("");
+  const secs = getSections();
+  let curSec = 0;
+  for (let k = 0; k < secs.length; k++) { if (i >= secs[k].start) curSec = k; }
+  const many = secs.length >= 2;
+  const ds = many ? secs[curSec].start : 0, de = many ? secs[curSec].end : STEPS.length;
+  let dh = "";
+  for (let k = ds; k < de; k++) {
+    dh += '<button aria-label="' + t.step + " " + (k + 1) + '"' + (k === i ? ' aria-current="true"' : "") + ' data-k="' + k + '"></button>';
+  }
+  $("dots").innerHTML = dh;
+  $("sections").classList.toggle("show", many);
+  $("sections").innerHTML = many ? secs.map((sc, k) =>
+    '<button type="button"' + (k === curSec ? ' aria-current="true"' : "") + ' data-sec="' + sc.start + '">' + escHtml(secTitle(sc.st)) + "</button>"
+  ).join("") : "";
+  $("chbtn").style.display = many ? "none" : "";
+  fillLessonSections();
 
   $("fsb").textContent = "⛶ " + t.full;
   $("fsx").textContent = "✕ " + t.exit + " (F)";
@@ -914,6 +1098,7 @@ $("modebtn").onclick = () => {
 // Interactive click on highlight box
 $("hl").onclick = (e) => {
   e.stopPropagation();
+  if (editOn) return;
   const hl = $("hl");
   hl.classList.add("clicked");
   setTimeout(() => hl.classList.remove("clicked"), 300);
@@ -941,6 +1126,56 @@ try {
   if (savedTheme) document.documentElement.setAttribute("data-theme", savedTheme);
 } catch(e){}
 
+// Reset everything render() builds at runtime, so a saved copy starts clean
+function cleanClone(doc) {
+  doc.querySelector("body").className = "";
+  doc.querySelector("#img").removeAttribute("src");
+  doc.querySelector("#dots").innerHTML = "";
+  doc.querySelector("#sections").innerHTML = "";
+  doc.querySelector("#sections").className = "sections";
+  doc.querySelector("#lsec").innerHTML = "";
+  doc.querySelector("#codebox").className = "codebox";
+  doc.querySelector("#wstip").innerHTML = "";
+  doc.querySelector("#lesson").className = "lesson";
+  doc.querySelector("#chaptersMenu").className = "chapters-menu";
+  doc.querySelectorAll(".bl, .eh, .ebar").forEach(el => el.remove());
+}
+
+$("lsec").onchange = e => {
+  if (e.target.value === "") return;
+  const sc = getSections()[+e.target.value];
+  if (!sc) return;
+  $("lf").value = sc.start + 1;
+  $("lt").value = sc.end;
+};
+$("sections").onclick = e => {
+  const b = e.target.closest("button");
+  if (b && b.dataset.sec !== undefined) go(+b.dataset.sec);
+};
+$("copybtn").onclick = () => {
+  const txt = $("codepre").textContent;
+  const done = () => {
+    $("copybtn").textContent = I18N[lang].copied;
+    setTimeout(() => { $("copybtn").textContent = I18N[lang].copy; }, 1200);
+  };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(txt).then(done, () => { legacyCopy(txt); done(); });
+  } else {
+    legacyCopy(txt);
+    done();
+  }
+};
+function legacyCopy(txt) {
+  const ta = document.createElement("textarea");
+  ta.value = txt;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); } catch (e) {}
+  ta.remove();
+}
+
 // Lesson slicing
 $("lsb").onclick = () => {
   const l = $("lesson");
@@ -954,7 +1189,16 @@ $("lsb").onclick = () => {
 $("lsave").onclick = () => {
   const a = Math.max(1, Math.min(STEPS.length, +$("lf").value || 1));
   const b = Math.max(a, Math.min(STEPS.length, +$("lt").value || STEPS.length));
-  const slicedSteps = STEPS.slice(a - 1, b);
+  const slicedSteps = STEPS.slice(a - 1, b).map(s => Object.assign({}, s));
+  if (!slicedSteps[0].chapterTitle && !slicedSteps[0].chapterTitleRu) {
+    for (let k = a - 2; k >= 0; k--) {
+      if (STEPS[k].chapterTitle || STEPS[k].chapterTitleRu) {
+        slicedSteps[0].chapterTitle = STEPS[k].chapterTitle;
+        slicedSteps[0].chapterTitleRu = STEPS[k].chapterTitleRu;
+        break;
+      }
+    }
+  }
   const slicedImgs = {};
   slicedSteps.forEach(s => { slicedImgs[s.img] = IMAGES[s.img]; });
 
@@ -967,11 +1211,7 @@ $("lsave").onclick = () => {
                "const META = " + safe(META) + ";" + src.slice(k);
 
   const doc = document.documentElement.cloneNode(true);
-  doc.querySelector("body").className = "";
-  doc.querySelector("#img").removeAttribute("src");
-  doc.querySelector("#dots").innerHTML = "";
-  doc.querySelector("#lesson").className = "lesson";
-  doc.querySelector("#chaptersMenu").className = "chapters-menu";
+  cleanClone(doc);
   doc.querySelector("#app").textContent = code;
   const gsrc = doc.querySelector("#guide-source");
   if (gsrc) gsrc.remove();
@@ -987,6 +1227,181 @@ $("lsave").onclick = () => {
   link.remove();
   setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
 };
+
+// ---- Frame editor: Ctrl+Shift+E (or open the file with ?edit=1). Move the red frame and blur areas, then save the file. ----
+const origBoxes = STEPS.map(s => s.box.slice());
+const origBlurs = STEPS.map(s => (s.blur || []).map(b => b.slice()));
+const modified = new Set();
+let editBar = null, editInfo = null;
+
+function renderBlurs() {
+  const sh = $("shot");
+  sh.querySelectorAll(".bl").forEach(el => el.remove());
+  const blurs = STEPS[i].blur || [];
+  blurs.forEach((b, bi) => {
+    const div = document.createElement("div");
+    div.className = "bl";
+    div.dataset.bi = bi;
+    div.style.cssText = "left:" + b[0] + "%;top:" + b[1] + "%;width:" + b[2] + "%;height:" + b[3] + "%";
+    if (editOn) {
+      addHandles(div);
+      const del = document.createElement("button");
+      del.className = "bdel"; del.textContent = "x"; del.title = "Remove blur";
+      del.onclick = ev => {
+        ev.stopPropagation();
+        STEPS[i].blur.splice(bi, 1);
+        if (!STEPS[i].blur.length) delete STEPS[i].blur;
+        modified.add(i); renderBlurs(); updateEditInfo();
+      };
+      div.appendChild(del);
+    }
+    sh.insertBefore(div, $("hl"));
+  });
+}
+function addHandles(el) {
+  if (el.querySelector(".eh")) return;
+  ["nw","n","ne","e","se","s","sw","w"].forEach(d => {
+    const h = document.createElement("div");
+    h.className = "eh"; h.dataset.d = d;
+    el.appendChild(h);
+  });
+}
+function updateEditInfo() {
+  if (!editInfo) return;
+  const b = STEPS[i].box;
+  editInfo.innerHTML = "<b>Step " + (i + 1) + "</b> | box %: <code>[" + b.join(", ") + "]</code> | blur: <b>" + (STEPS[i].blur || []).length + "</b> | changed steps: <b>" + modified.size + "</b>";
+}
+function downloadFile(name, content, type) {
+  const url = URL.createObjectURL(new Blob([content], { type: type }));
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+function saveEditedHtml() {
+  const clone = document.documentElement.cloneNode(true);
+  cleanClone(clone);
+  const appEl = clone.querySelector("#app");
+  const src = appEl.textContent;
+  const a0 = src.indexOf("[", src.indexOf("const STEPS = "));
+  const m = src.slice(a0).match(/;\\r?\\nconst IMAGES/);
+  const a1 = m ? a0 + m.index : src.indexOf(";", a0);
+  appEl.textContent = src.slice(0, a0) + safeJson(STEPS) + src.slice(a1);
+  // keep the editable project inside the file in step with the new frames
+  const gs = clone.querySelector("#guide-source");
+  if (gs) {
+    try {
+      const o = JSON.parse(gs.textContent);
+      if (o.steps && o.steps.length === STEPS.length) {
+        o.steps.forEach((ss, k) => {
+          const b = STEPS[k].box;
+          ss.box = { x: b[0], y: b[1], w: b[2], h: b[3] };
+          if (STEPS[k].blur && STEPS[k].blur.length) ss.blur = STEPS[k].blur.map(r => ({ x: r[0], y: r[1], w: r[2], h: r[3] }));
+          else delete ss.blur;
+        });
+        gs.textContent = safeJson(o);
+      } else { gs.remove(); }
+    } catch (e) { gs.remove(); }
+  }
+  let name = "guide.html";
+  try { name = decodeURIComponent(location.pathname.split("/").pop()) || "guide.html"; } catch (e) {}
+  if (!/[.]html?$/i.test(name)) name = "guide.html";
+  downloadFile(name, "<!doctype html>" + String.fromCharCode(10) + clone.outerHTML, "text/html;charset=utf-8");
+}
+function setEdit(on) {
+  editOn = on;
+  document.body.classList.toggle("edit-mode", on);
+  if (on) {
+    addHandles($("hl"));
+    if (!editBar) {
+      editBar = document.createElement("div");
+      editBar.className = "ebar";
+      editInfo = document.createElement("span");
+      editInfo.style.flex = "1";
+      const mk = (label, fn, primary) => {
+        const b = document.createElement("button");
+        b.textContent = label;
+        if (primary) b.className = "primary";
+        b.onclick = fn;
+        return b;
+      };
+      editBar.append(
+        editInfo,
+        mk("+ Add blur", () => {
+          if (!STEPS[i].blur) STEPS[i].blur = [];
+          STEPS[i].blur.push([10, 6, 16, 4]);
+          modified.add(i); renderBlurs(); updateEditInfo();
+        }),
+        mk("Reset step", () => {
+          STEPS[i].box = origBoxes[i].slice();
+          if (origBlurs[i].length) STEPS[i].blur = origBlurs[i].map(b => b.slice()); else delete STEPS[i].blur;
+          modified.delete(i); render();
+        }),
+        mk("Save HTML", saveEditedHtml, true),
+        mk("Exit edit", () => setEdit(false))
+      );
+      const stage = document.querySelector(".stage");
+      stage.parentNode.insertBefore(editBar, stage);
+    }
+    editBar.style.display = "flex";
+  } else {
+    $("hl").querySelectorAll(".eh").forEach(el => el.remove());
+    if (editBar) editBar.style.display = "none";
+  }
+  renderBlurs();
+  updateEditInfo();
+}
+let editDrag = null;
+$("shot").addEventListener("pointerdown", e => {
+  if (!editOn) return;
+  if (e.target.classList.contains("bdel")) return;
+  const hlEl = e.target.closest("#hl"), blEl = e.target.closest(".bl");
+  if (!hlEl && !blEl) return;
+  e.preventDefault(); e.stopPropagation();
+  const dir = e.target.classList.contains("eh") ? e.target.dataset.d : "move";
+  const rect = $("shot").getBoundingClientRect();
+  const bi = blEl ? Number(blEl.dataset.bi) : -1;
+  const arr = bi >= 0 ? STEPS[i].blur[bi] : STEPS[i].box;
+  editDrag = { bi: bi, dir: dir, sx: e.clientX, sy: e.clientY, rw: rect.width, rh: rect.height, orig: arr.slice() };
+});
+window.addEventListener("pointermove", e => {
+  if (!editDrag) return;
+  const dx = ((e.clientX - editDrag.sx) / editDrag.rw) * 100;
+  const dy = ((e.clientY - editDrag.sy) / editDrag.rh) * 100;
+  let x = editDrag.orig[0], y = editDrag.orig[1], w = editDrag.orig[2], h = editDrag.orig[3];
+  const d = editDrag.dir, rd = v => Math.round(v * 100) / 100;
+  if (d === "move") {
+    x = Math.max(0, Math.min(100 - w, x + dx));
+    y = Math.max(0, Math.min(100 - h, y + dy));
+  } else {
+    if (d.indexOf("w") >= 0) { const nx = Math.max(0, Math.min(x + w - 0.5, x + dx)); w += x - nx; x = nx; }
+    if (d.indexOf("e") >= 0) { w = Math.max(0.5, Math.min(100 - x, w + dx)); }
+    if (d.indexOf("n") >= 0) { const ny = Math.max(0, Math.min(y + h - 0.5, y + dy)); h += y - ny; y = ny; }
+    if (d.indexOf("s") >= 0) { h = Math.max(0.5, Math.min(100 - y, h + dy)); }
+  }
+  const next = [rd(x), rd(y), rd(w), rd(h)];
+  if (editDrag.bi >= 0) {
+    STEPS[i].blur[editDrag.bi] = next;
+    const el = $("shot").querySelector('.bl[data-bi="' + editDrag.bi + '"]');
+    if (el) el.style.cssText = "left:" + next[0] + "%;top:" + next[1] + "%;width:" + next[2] + "%;height:" + next[3] + "%";
+  } else {
+    STEPS[i].box = next;
+    $("hl").style.cssText = "left:" + next[0] + "%;top:" + next[1] + "%;width:" + next[2] + "%;height:" + next[3] + "%";
+    if (!STEPS[i].cursorPos) {
+      $("cur").style.left = (next[0] + next[2] * 0.96) + "%";
+      $("cur").style.top = (next[1] + next[3] * 0.92) + "%";
+    }
+  }
+  modified.add(i);
+  updateEditInfo();
+});
+window.addEventListener("pointerup", () => { editDrag = null; });
+document.addEventListener("keydown", e => {
+  if (e.ctrlKey && e.shiftKey && (e.key === "E" || e.key === "e")) {
+    e.preventDefault();
+    setEdit(!editOn);
+  }
+});
 
 // Read the step aloud (browser speech synthesis, no libraries, no keys).
 const SPEECH_OK = "speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined";
@@ -1084,6 +1499,7 @@ document.addEventListener("keydown", e => {
 });
 
 render();
+try { if (new URLSearchParams(location.search).get("edit") === "1") setEdit(true); } catch (e) {}
 </script>
 </body>
 </html>`;
@@ -1112,8 +1528,11 @@ export async function importFromStandaloneHtml(file: File): Promise<GuideProject
     throw new Error('No STEPS array found in the HTML file, or the steps list is empty.');
   }
 
-  const rawImages = extractJsStructure(html, 'IMAGES') || {};
+  const rawImages = extractAllImages(html);
   const rawMeta = extractJsStructure(html, 'META') || {};
+  const rawSections = extractJsStructure(html, 'SECTIONS');
+  // Pinned note (id="wstip" in the player, texts live in `const TIPS = {en, ru}`)
+  const rawTips = /id=["']wstip["']/.test(html) ? extractJsStructure(html, 'TIPS') : null;
 
   const projectId = generateId();
   const assetMap = new Map<string, ScreenshotAsset>();
@@ -1190,19 +1609,37 @@ export async function importFromStandaloneHtml(file: File): Promise<GuideProject
     const enText = s.en || s.ru || '';
     const ruText = s.ru || s.en || '';
 
-    return {
+    const step: GuideStep = {
       id: generateId(),
       screenshotId: asset?.id || '',
       act: (s.act as ActionType) || 'click',
       box,
       cursorPos,
       chapterTitle: s.chapterTitle || s.chapter || s.chapter_title,
+      chapterTitleRu: s.chapterTitleRu || undefined,
       en: enText,
       ru: ruText,
       voiceDraft: s.voiceDraft || s.voice_draft,
       keepBlur: Boolean(s.keepBlur || s.keep_blur),
     };
+    if (typeof s.code === 'string' && s.code.trim()) step.code = s.code;
+    const blur = percentArrayToBoxes(s.blur);
+    if (blur.length) step.blur = blur;
+    return step;
   });
+
+  // Sections of the Gemini-made player: SECTIONS = [{en, ru, start}] (start = 0-based step index)
+  if (Array.isArray(rawSections)) {
+    for (const sec of rawSections) {
+      const idx = Number(sec?.start);
+      if (!Number.isInteger(idx) || idx < 0 || idx >= steps.length) continue;
+      const en = String(sec.en || sec.ru || '').trim();
+      const ru = String(sec.ru || sec.en || '').trim();
+      if (!en && !ru) continue;
+      steps[idx].chapterTitle = en || ru;
+      steps[idx].chapterTitleRu = ru || en;
+    }
+  }
 
   const baseFileName = file.name.replace(/\.[^/.]+$/, '');
   const titleEn = rawMeta.title_en || rawMeta.titleEn || extractedTitle || baseFileName || 'Interactive Step Guide';
@@ -1221,6 +1658,8 @@ export async function importFromStandaloneHtml(file: File): Promise<GuideProject
     subRu,
     defaultLang,
     globalBlurBoxes: [],
+    pinnedNoteEn: noteHtmlToText(rawTips?.en || rawMeta.note_en) || undefined,
+    pinnedNoteRu: noteHtmlToText(rawTips?.ru || rawMeta.note_ru) || undefined,
     steps,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -1284,6 +1723,17 @@ export async function createSubProjectFromRange(
     box: { ...s.box },
     cursorPos: s.cursorPos ? { ...s.cursorPos } : undefined,
   }));
+
+  // A slice that starts in the middle of a section keeps that section's name on its first step
+  if (newSteps.length > 0 && !newSteps[0].chapterTitle) {
+    for (let k = fromIdx - 1; k >= 0; k--) {
+      if (project.steps[k].chapterTitle) {
+        newSteps[0].chapterTitle = project.steps[k].chapterTitle;
+        newSteps[0].chapterTitleRu = project.steps[k].chapterTitleRu;
+        break;
+      }
+    }
+  }
 
   const stepRangeStr = `${fromIdx + 1}–${toIdx + 1}`;
   const titleEn = customTitle?.trim() || `${project.titleEn || project.titleRu} (Steps ${stepRangeStr})`;
@@ -1358,6 +1808,9 @@ async function tryImportEmbeddedSource(html: string): Promise<GuideProject | nul
       ru: s.ru || '',
     };
     if (s.chapterTitle !== undefined && s.chapterTitle !== null) step.chapterTitle = s.chapterTitle;
+    if (s.chapterTitleRu) step.chapterTitleRu = s.chapterTitleRu;
+    if (typeof s.code === 'string' && s.code) step.code = s.code;
+    if (Array.isArray(s.blur) && s.blur.length) step.blur = s.blur.map(cleanBox);
     if (s.cursorPos && typeof s.cursorPos === 'object') {
       step.cursorPos = { x: Number(s.cursorPos.x) || 0, y: Number(s.cursorPos.y) || 0 };
     }
@@ -1375,6 +1828,8 @@ async function tryImportEmbeddedSource(html: string): Promise<GuideProject | nul
     subRu: src.subRu || '',
     defaultLang: src.defaultLang === 'ru' ? 'ru' : 'en',
     globalBlurBoxes: Array.isArray(src.globalBlurBoxes) ? src.globalBlurBoxes.map(cleanBox) : [],
+    pinnedNoteEn: src.pinnedNoteEn || undefined,
+    pinnedNoteRu: src.pinnedNoteRu || undefined,
     steps,
     createdAt: Date.now(),
     updatedAt: Date.now(),

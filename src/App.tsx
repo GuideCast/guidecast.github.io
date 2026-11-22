@@ -1387,6 +1387,26 @@ export default function App() {
                   aria-label={uiLang === 'en' ? 'Subtitle' : 'Подзаголовок'}
                   className="text-sm text-slate-600 dark:text-slate-300 bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:border-teal-500 focus:outline-none w-full transition"
                 />
+                <input
+                  type="text"
+                  value={
+                    uiLang === 'en'
+                      ? activeProject.pinnedNoteEn || activeProject.pinnedNoteRu || ''
+                      : activeProject.pinnedNoteRu || activeProject.pinnedNoteEn || ''
+                  }
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setActiveProject({ ...activeProject, pinnedNoteEn: val, pinnedNoteRu: val });
+                    updateProject(activeProject.id, { pinnedNoteEn: val, pinnedNoteRu: val });
+                  }}
+                  placeholder={
+                    uiLang === 'en'
+                      ? 'Pinned note above every step (optional)'
+                      : 'Закреплённая заметка над шагами (необязательно)'
+                  }
+                  aria-label={uiLang === 'en' ? 'Pinned note' : 'Закреплённая заметка'}
+                  className="text-sm text-slate-600 dark:text-slate-300 bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:border-teal-500 focus:outline-none w-full transition"
+                />
               </div>
 
               {/* Tabs */}
@@ -1601,6 +1621,36 @@ export default function App() {
                                   <ChevronDown className="w-4 h-4" />
                                 </button>
                                 <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedStepIndex(idx);
+                                    screenshotInputRef.current?.click();
+                                  }}
+                                  className="p-0.5 hover:text-teal-700 dark:hover:text-teal-300"
+                                  title={uiLang === 'en' ? 'Insert pictures after this step' : 'Вставить картинки после этого шага'}
+                                  aria-label={uiLang === 'en' ? 'Insert pictures after this step' : 'Вставить картинки после этого шага'}
+                                  data-testid={`insert-after-${idx}`}
+                                >
+                                  <ImagePlus className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedStepIndex(idx);
+                                    setTimeout(() => {
+                                      const el = document.getElementById('chapter-title-input') as HTMLInputElement | null;
+                                      el?.focus();
+                                      el?.select();
+                                    }, 80);
+                                  }}
+                                  className="p-0.5 hover:text-teal-700 dark:hover:text-teal-300 text-xs font-bold leading-none w-4 h-4"
+                                  title={uiLang === 'en' ? 'Start a new section at this step' : 'Начать новый раздел с этого шага'}
+                                  aria-label={uiLang === 'en' ? 'Start a new section at this step' : 'Начать новый раздел с этого шага'}
+                                  data-testid={`section-here-${idx}`}
+                                >
+                                  §
+                                </button>
+                                <button
                                   onClick={(e) => handleDeleteStep(idx, e)}
                                   className="p-0.5 hover:text-red-600"
                                   title={uiLang === 'en' ? 'Delete step' : 'Удалить шаг'}
@@ -1808,6 +1858,52 @@ export default function App() {
                   <p className="text-sm text-slate-600 dark:text-slate-300 mb-4 leading-relaxed">
                     {UI_TEXT[uiLang].export.splitterSubtitle}
                   </p>
+
+                  {(() => {
+                    const total = activeProject.steps.length;
+                    const starts: number[] = [];
+                    activeProject.steps.forEach((st, idx) => {
+                      if (st.chapterTitle || st.chapterTitleRu) starts.push(idx);
+                    });
+                    if (starts.length > 0 && starts[0] !== 0) starts.unshift(0);
+                    if (starts.length < 2) return null;
+                    return (
+                      <div className="mb-3" data-testid="slice-sections">
+                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          {uiLang === 'en' ? 'Pick a section:' : 'Выбрать раздел:'}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {starts.map((from, k) => {
+                            const to = k + 1 < starts.length ? starts[k + 1] : total;
+                            const st = activeProject.steps[from];
+                            const name =
+                              (uiLang === 'en'
+                                ? st.chapterTitle || st.chapterTitleRu
+                                : st.chapterTitleRu || st.chapterTitle) || (uiLang === 'en' ? 'Start' : 'Начало');
+                            const active = sliceFromStep === from + 1 && sliceToStep === to;
+                            return (
+                              <button
+                                key={from}
+                                type="button"
+                                onClick={() => {
+                                  setSliceFromStep(from + 1);
+                                  setSliceToStep(to);
+                                  setSliceLessonTitle(name);
+                                }}
+                                className={`px-3 py-1.5 rounded-lg border text-sm transition ${
+                                  active
+                                    ? 'bg-teal-700 text-white border-teal-700 font-semibold'
+                                    : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:border-teal-600'
+                                }`}
+                              >
+                                {name} <span className="opacity-70">({from + 1}-{to})</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end mb-4 bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60">
                     <div className="md:col-span-2">
@@ -2642,6 +2738,90 @@ function StepEditorPanel({
           {uiLang === 'en' ? 'Preview and download the guide' : 'Просмотреть и скачать гайд'}
         </button>
 
+        <div className="rounded-xl border border-slate-300 dark:border-slate-600 px-3 py-3">
+      {/* Step details */}
+      <section className="space-y-2">
+        <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+          {uiLang === 'en' ? 'Step details' : 'Детали шага'}
+        </h4>
+        <label className="block text-sm text-slate-700 dark:text-slate-300">
+          {uiLang === 'en' ? 'Section title (shown in the contents)' : 'Название раздела (для оглавления)'}
+          <input
+            type="text"
+            id="chapter-title-input"
+            value={step.chapterTitle || ''}
+            onChange={(e) => onUpdateStep({ chapterTitle: e.target.value })}
+            placeholder={uiLang === 'en' ? 'For example: 1. Connect data' : 'Например: 1. Подключение данных'}
+            className="mt-1 w-full text-sm p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+          />
+        </label>
+        {step.chapterTitle ? (
+          <label className="block text-sm text-slate-700 dark:text-slate-300">
+            {uiLang === 'en'
+              ? 'Section title in Russian (optional; empty = same as above)'
+              : 'Название раздела по-русски (необязательно; пусто = как выше)'}
+            <input
+              type="text"
+              value={step.chapterTitleRu || ''}
+              onChange={(e) => onUpdateStep({ chapterTitleRu: e.target.value })}
+              className="mt-1 w-full text-sm p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+            />
+          </label>
+        ) : (
+          <p className="text-xs text-slate-600 dark:text-slate-400">
+            {uiLang === 'en'
+              ? 'A step with a section title starts a new section. Steps without one belong to the section above.'
+              : 'Шаг с названием раздела начинает новый раздел. Шаги без названия относятся к разделу выше.'}
+          </p>
+        )}
+        <label className="block text-sm text-slate-700 dark:text-slate-300">
+          {uiLang === 'en'
+            ? 'Code to copy (optional: formula, SQL, M code)'
+            : 'Код для копирования (необязательно: формула, SQL, M-код)'}
+          <textarea
+            value={step.code || ''}
+            onChange={(e) => onUpdateStep({ code: e.target.value })}
+            rows={3}
+            spellCheck={false}
+            data-testid="step-code"
+            className="mt-1 w-full text-xs font-mono p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+          />
+        </label>
+        {step.blur && step.blur.length > 0 && (
+          <p className="text-xs text-slate-600 dark:text-slate-400 flex items-center gap-2">
+            {uiLang === 'en'
+              ? `${step.blur.length} extra blur area(s) on this step. Move them in the exported HTML (Ctrl+Shift+E).`
+              : `Доп. областей блюра на этом шаге: ${step.blur.length}. Двигайте их в готовом HTML (Ctrl+Shift+E).`}
+            <button
+              type="button"
+              onClick={() => onUpdateStep({ blur: undefined })}
+              className="underline hover:text-red-600"
+            >
+              {uiLang === 'en' ? 'Remove' : 'Убрать'}
+            </button>
+          </p>
+        )}
+        <label className="block text-sm text-slate-700 dark:text-slate-300">
+          {uiLang === 'en' ? 'Screenshot for this step' : 'Скриншот для этого шага'}
+          <select
+            value={step.screenshotId}
+            onChange={(e) => onUpdateStep({ screenshotId: e.target.value })}
+            className="mt-1 w-full text-sm p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+          >
+            {screenshots.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.filename}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="text-xs font-mono text-slate-600 dark:text-slate-400">
+          {uiLang === 'en' ? 'Box' : 'Рамка'}: {step.box.x}%, {step.box.y}%, {step.box.w}% x {step.box.h}%
+          {step.cursorPos ? ` · ${uiLang === 'en' ? 'Pointer' : 'Курсор'}: ${step.cursorPos.x}%, ${step.cursorPos.y}%` : ''}
+        </p>
+      </section>
+        </div>
+
         {/* ===== Privacy & more tools (collapsible, remembered) ===== */}
         <div className="rounded-xl border border-slate-300 dark:border-slate-600">
           <button
@@ -2801,40 +2981,6 @@ function StepEditorPanel({
                 </p>
               </section>
 
-              {/* Step details */}
-              <section className="space-y-2">
-                <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                  {uiLang === 'en' ? 'Step details' : 'Детали шага'}
-                </h4>
-                <label className="block text-sm text-slate-700 dark:text-slate-300">
-                  {uiLang === 'en' ? 'Section title (shown in the contents)' : 'Название раздела (для оглавления)'}
-                  <input
-                    type="text"
-                    value={step.chapterTitle || ''}
-                    onChange={(e) => onUpdateStep({ chapterTitle: e.target.value })}
-                    placeholder={uiLang === 'en' ? 'For example: 1. Connect data' : 'Например: 1. Подключение данных'}
-                    className="mt-1 w-full text-sm p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
-                  />
-                </label>
-                <label className="block text-sm text-slate-700 dark:text-slate-300">
-                  {uiLang === 'en' ? 'Screenshot for this step' : 'Скриншот для этого шага'}
-                  <select
-                    value={step.screenshotId}
-                    onChange={(e) => onUpdateStep({ screenshotId: e.target.value })}
-                    className="mt-1 w-full text-sm p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
-                  >
-                    {screenshots.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.filename}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <p className="text-xs font-mono text-slate-600 dark:text-slate-400">
-                  {uiLang === 'en' ? 'Box' : 'Рамка'}: {step.box.x}%, {step.box.y}%, {step.box.w}% x {step.box.h}%
-                  {step.cursorPos ? ` · ${uiLang === 'en' ? 'Pointer' : 'Курсор'}: ${step.cursorPos.x}%, ${step.cursorPos.y}%` : ''}
-                </p>
-              </section>
             </div>
           )}
         </div>

@@ -219,15 +219,17 @@ export async function renderProcessedScreenshot(
   if (applyBlur) {
     // Collect all blur areas: global + asset specific
     const allBlur = [...globalBlurBoxes, ...(asset.blurBoxes || [])];
+    // Step-specific areas are burned in as they are (no cutout)
+    const stepBlur = stepsUsingThisImage.flatMap((step) => step.blur || []);
 
-    if (allBlur.length > 0) {
+    if (allBlur.length > 0 || stepBlur.length > 0) {
       // Find cutout rectangles: for steps on this image where act !== 'look' and !keepBlur
       const cutouts = stepsUsingThisImage
         .filter((step) => step.act !== 'look' && !step.keepBlur)
         .map((step) => step.box);
 
       // Subtract active step boxes from blur regions so buttons stay legible
-      const finalBlurRegions = subtractAll(allBlur, cutouts);
+      const finalBlurRegions = [...subtractAll(allBlur, cutouts), ...stepBlur];
 
       // Burn blur into each region
       for (const blurBox of finalBlurRegions) {

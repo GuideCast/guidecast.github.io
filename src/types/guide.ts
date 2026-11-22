@@ -18,6 +18,8 @@ export interface GuideStep {
   id: string;
   screenshotId: string;
   chapterTitle?: string;
+  /** Russian name of the section that starts at this step (chapterTitle is the English / single-language name). */
+  chapterTitleRu?: string;
   act: ActionType;
   box: BoxRect;
   cursorPos?: { x: number; y: number }; // optional custom cursor percentage (0..100)
@@ -25,6 +27,10 @@ export interface GuideStep {
   ru: string;
   voiceDraft?: string;
   keepBlur?: boolean; // if true, does not carve out blur for this step in public mode
+  /** Text the student can copy (formula, SQL, M code). Shown under the caption with a Copy button. */
+  code?: string;
+  /** Step-specific blur areas (percent). Shown as movable overlays in the private HTML, burned into the image in the public one. */
+  blur?: BoxRect[];
 }
 
 /**
@@ -53,6 +59,9 @@ export interface GuideProject {
   subRu: string;
   defaultLang: 'en' | 'ru';
   globalBlurBoxes: BoxRect[]; // blur areas applied across all screenshots in this project
+  /** Pinned note shown above the steps on every page (HTML allowed). */
+  pinnedNoteEn?: string;
+  pinnedNoteRu?: string;
   steps: GuideStep[];
   createdAt: number;
   updatedAt: number;
@@ -100,7 +109,10 @@ export interface StandaloneStep {
   en: string;
   ru: string;
   chapterTitle?: string;
+  chapterTitleRu?: string;
   cursorPos?: [number, number];
+  code?: string;
+  blur?: [number, number, number, number][]; // [x%, y%, w%, h%]
 }
 
 export interface StandaloneMeta {
@@ -109,4 +121,6 @@ export interface StandaloneMeta {
   sub_en?: string;
   sub_ru?: string;
   default_lang?: 'en' | 'ru';
+  note_en?: string;
+  note_ru?: string;
 }
