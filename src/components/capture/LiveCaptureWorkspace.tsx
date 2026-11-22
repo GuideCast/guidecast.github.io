@@ -1368,17 +1368,49 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
   };
 
   // --- Helper to render live selection box overlay ---
-  const renderSelectionOverlay = (box: BoxRect | null) => {
+  // The box is in percent of the VIDEO picture. The video sits letterboxed (object-contain) inside its
+  // container, so the overlay must be placed inside the picture, not inside the whole container.
+  const renderSelectionOverlay = (
+    box: BoxRect | null,
+    container?: HTMLElement | null,
+    media?: HTMLVideoElement | null
+  ) => {
     if (!box) return null;
+    let style: React.CSSProperties = {
+      left: `${box.x}%`,
+      top: `${box.y}%`,
+      width: `${box.w}%`,
+      height: `${box.h}%`,
+    };
+    const mw = media?.videoWidth || 0;
+    const mh = media?.videoHeight || 0;
+    if (container && mw && mh) {
+      const rect = container.getBoundingClientRect();
+      if (rect.width && rect.height) {
+        const mediaAspect = mw / mh;
+        let renderW = rect.width;
+        let renderH = rect.height;
+        let offsetX = 0;
+        let offsetY = 0;
+        if (rect.width / rect.height > mediaAspect) {
+          renderW = rect.height * mediaAspect;
+          offsetX = (rect.width - renderW) / 2;
+        } else {
+          renderH = rect.width / mediaAspect;
+          offsetY = (rect.height - renderH) / 2;
+        }
+        style = {
+          left: offsetX + (box.x / 100) * renderW,
+          top: offsetY + (box.y / 100) * renderH,
+          width: (box.w / 100) * renderW,
+          height: (box.h / 100) * renderH,
+        };
+      }
+    }
     return (
       <div
-        className="absolute border-2 border-rose-500 bg-rose-500/20 pointer-events-none transition-all shadow-[0_0_14px_rgba(244,63,94,0.8)] z-20"
-        style={{
-          left: `${box.x}%`,
-          top: `${box.y}%`,
-          width: `${box.w}%`,
-          height: `${box.h}%`,
-        }}
+        className="absolute border-2 border-rose-500 bg-rose-500/20 pointer-events-none shadow-[0_0_14px_rgba(244,63,94,0.8)] z-20"
+        style={style}
       >
         <div className="absolute -top-6 left-0 bg-rose-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow">
           {Math.round(box.w)}% × {Math.round(box.h)}%
@@ -1684,7 +1716,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
           )}
 
           {/* Current Dragging Selection Overlay for Live Stream */}
-          {!isFrozen && renderSelectionOverlay(currentBox)}
+          {!isFrozen && renderSelectionOverlay(currentBox, pipContainerRef.current, pipVideoRef.current)}
 
           {/* Hover Helper Tip Pill for Live Stream */}
           {!isFrozen && (
@@ -2429,7 +2461,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
             )}
 
             {/* Current Drawing Box Overlay */}
-            {renderSelectionOverlay(currentBox)}
+            {renderSelectionOverlay(currentBox, containerRef.current, videoRef.current)}
 
             {/* Draw mode indicator pill */}
             {isCapturingScreen && (
