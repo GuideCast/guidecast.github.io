@@ -45,6 +45,27 @@ export function UpdateBanner({ uiLang }: { uiLang: UiLang }) {
     return () => window.clearTimeout(id);
   }, [offlineReady, setOfflineReady]);
 
+  // The plugin's own "update and reload" can stay silent in an installed window (a worker that was
+  // already waiting when the window opened does not fire its reload event). So: tell the waiting
+  // worker to take over, reload when it does, and reload anyway after a short wait.
+  const applyUpdate = async () => {
+    let reloaded = false;
+    const reload = () => {
+      if (reloaded) return;
+      reloaded = true;
+      window.location.reload();
+    };
+    try {
+      navigator.serviceWorker?.addEventListener('controllerchange', reload, { once: true });
+      const reg = await navigator.serviceWorker?.getRegistration();
+      if (reg?.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      else updateServiceWorker(true).catch(() => undefined);
+    } catch {
+      // fall through to the timed reload below
+    }
+    window.setTimeout(reload, 2500);
+  };
+
   if (!needRefresh && !offlineReady) return null;
 
   return (
@@ -58,7 +79,7 @@ export function UpdateBanner({ uiLang }: { uiLang: UiLang }) {
           <RefreshCw className="w-4 h-4 text-teal-600" />
           <span>{t.updateReady}</span>
           <button
-            onClick={() => updateServiceWorker(true)}
+            onClick={applyUpdate}
             className="rounded-md bg-teal-600 px-3 py-1 font-medium text-white hover:bg-teal-700"
           >
             {t.update}
