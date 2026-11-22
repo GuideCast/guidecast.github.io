@@ -713,7 +713,10 @@ h1 small{display:block;font-weight:400;color:var(--muted);font-size:13px}
 .txt{flex:1;min-width:0}
 .chapter-badge{display:inline-block;background:var(--line);color:var(--ink);font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;margin-bottom:6px;margin-right:6px}
 .chip{display:inline-block;background:var(--chip);color:var(--muted);font-size:12px;padding:2px 9px;border-radius:99px;margin-bottom:4px;letter-spacing:.02em;text-transform:uppercase;font-weight:600}
-.txt p{margin:0;font-size:17px;line-height:1.45}
+.txt p{margin:0;font-size:17px;line-height:1.45;white-space:pre-line;user-select:text}
+.txt code{background:var(--chip);padding:1px 6px;border-radius:4px;font:14px ui-monospace,SFMono-Regular,Consolas,monospace}
+.txt code.cp{cursor:copy;user-select:all}
+.txt code.cp.copied{outline:2px solid var(--accent)}
 .txt b{background:var(--chip);padding:0 5px;border-radius:4px}
 nav{display:flex;align-items:center;gap:12px;margin-top:12px}
 nav button.nav{flex:none;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:12px 22px;border-radius:10px;font:inherit;font-weight:600;cursor:pointer;min-width:110px}
@@ -915,6 +918,12 @@ let trainerMode = ${options.interactiveMode === false ? 'false' : 'true'};
 
 const $ = id => document.getElementById(id);
 
+// Caption: new lines are kept (CSS pre-line); text between backticks becomes a copyable chip
+const BT = String.fromCharCode(96);
+const BT_RE = new RegExp(BT + "([^" + BT + "]+)" + BT, "g");
+function capHtml(h) {
+  return String(h).replace(BT_RE, '<code class="cp" title="Click to copy">$1</code>');
+}
 function escHtml(s) {
   return String(s).split("&").join("&amp;").split("<").join("&lt;").split(">").join("&gt;");
 }
@@ -989,7 +998,7 @@ function render() {
     bContainer.innerHTML = "";
   }
 
-  $("text").innerHTML = s[lang] || s.ru || s.en || "";
+  $("text").innerHTML = capHtml(s[lang] || s.ru || s.en || "");
   if (s.code) {
     $("codepre").textContent = s.code;
     $("copybtn").textContent = t.copy;
@@ -1151,6 +1160,15 @@ $("lsec").onchange = e => {
 $("sections").onclick = e => {
   const b = e.target.closest("button");
   if (b && b.dataset.sec !== undefined) go(+b.dataset.sec);
+};
+$("text").onclick = e => {
+  const c = e.target.closest && e.target.closest("code.cp");
+  if (!c) return;
+  const txt = c.textContent;
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(txt).catch(() => legacyCopy(txt));
+  else legacyCopy(txt);
+  c.classList.add("copied");
+  setTimeout(() => c.classList.remove("copied"), 900);
 };
 $("copybtn").onclick = () => {
   const txt = $("codepre").textContent;

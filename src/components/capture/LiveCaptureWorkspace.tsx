@@ -32,7 +32,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import type { BoxRect, GuideProject, GuideStep, ScreenshotAsset, ActionType } from '../../types/guide';
-import { addScreenshot, updateProject, updateScreenshot, generateId } from '../../db/database';
+import { addScreenshot, deleteScreenshot, updateProject, updateScreenshot, generateId } from '../../db/database';
 import {
   InteractiveBoxEditor,
   computeDefaultCursorPos,
@@ -176,6 +176,9 @@ const translations = {
     boxUpdatedMsg: 'Highlight box updated!',
     fullFrameCapturedMsg: 'Full frame saved (Step #{n})',
     stepDeletedMsg: 'Step deleted',
+    discardStep: 'Discard this step',
+    undoLastStep: 'Undo last step',
+    undoLastStepMsg: 'Last step removed. Steps left: {n}',
     importedFromClipboard: 'Image imported from clipboard/file (Step #{n})',
     importError: 'Error importing image',
     quickComment: 'Quick Step Details',
@@ -282,6 +285,9 @@ const translations = {
     boxUpdatedMsg: 'Рамка шага обновлена!',
     fullFrameCapturedMsg: 'Полный кадр сохранён (Шаг #{n})',
     stepDeletedMsg: 'Шаг удален',
+    discardStep: 'Отменить этот шаг',
+    undoLastStep: 'Убрать последний шаг',
+    undoLastStepMsg: 'Последний шаг убран. Осталось шагов: {n}',
     importedFromClipboard: 'Скриншот импортирован из буфера/файла (Шаг #{n})',
     importError: 'Ошибка импорта изображения',
     quickComment: 'Быстрый комментарий',
@@ -360,7 +366,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
   const [instructionText, setInstructionText] = useState('');
 
   // Input refs to restore focus smoothly
-  const pipInstructionInputRef = useRef<HTMLInputElement | null>(null);
+  const pipInstructionInputRef = useRef<HTMLTextAreaElement | null>(null);
   const sidebarInstructionInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   // --- Voice Dictation State ---
@@ -1258,14 +1264,38 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
     showBanner(text.blurRemoved);
   }, [lastCapturedScreenshot, onProjectUpdated, showBanner, text.blurRemoved]);
 
+  // Removes a step; its screenshot goes too unless another step still uses the same picture.
+  const removeStepWithShot = async (stepId: string): Promise<number> => {
+    const step = project.steps.find((s) => s.id === stepId);
+    if (!step) return project.steps.length;
+    const rest = project.steps.filter((s) => s.id !== stepId);
+    await updateProject(project.id, { steps: rest });
+    if (step.screenshotId && !rest.some((s) => s.screenshotId === step.screenshotId)) {
+      await deleteScreenshot(step.screenshotId);
+    }
+    await onProjectUpdated();
+    return rest.length;
+  };
+
   const handleDeleteActiveStep = async () => {
     if (!activeStepId) return;
-    const updatedSteps = project.steps.filter((s) => s.id !== activeStepId);
-    await updateProject(project.id, { steps: updatedSteps });
-    await onProjectUpdated();
+    await removeStepWithShot(activeStepId);
     setActiveStepId(null);
     setPipViewMode('live');
+    setLiveTranscript('');
+    setDrawMode('shoot');
     showBanner(text.stepDeletedMsg);
+  };
+
+  // Live view: take back the last saved step (can be pressed again for the one before it)
+  const handleUndoLastStep = async () => {
+    const last = project.steps[project.steps.length - 1];
+    if (!last) return;
+    const left = await removeStepWithShot(last.id);
+    setActiveStepId(null);
+    setPipViewMode('live');
+    setDrawMode('shoot');
+    showBanner(text.undoLastStepMsg.replace('{n}', String(left)));
   };
 
   // --- Clipboard (Ctrl+V) & File Upload Support ---
@@ -1802,13 +1832,13 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
 
             {/* Item 1: ONLY ONE instruction input field (Never strips space, never overwritten while typing) */}
             <div className="relative flex items-center">
-              <input
+              <textarea
                 ref={pipInstructionInputRef}
-                type="text"
+                rows={2}
                 value={instructionText}
                 onChange={(e) => handleInstructionChange(e.target.value)}
                 placeholder={text.instructionPlaceholder}
-                className={`w-full border rounded-md px-2.5 py-1.5 text-xs transition focus:outline-none focus:ring-1 focus:ring-emerald-500 ${
+                className={`w-full border rounded-md px-2.5 py-1.5 text-xs transition focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-none ${
                   isDarkMode
                     ? 'bg-slate-950 border-slate-700 text-white placeholder-slate-500 focus:border-emerald-500'
                     : 'bg-white border-slate-300 text-slate-800 placeholder-slate-400 focus:border-emerald-500'
@@ -1834,6 +1864,19 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
                 className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs py-2 px-3 rounded-lg shadow-lg shadow-emerald-950/30 transition transform active:scale-95"
               >
                 <span>{text.saveAndNext}</span>
+              </button>
+              <button
+                type="button"
+                data-testid="discard-step"
+                onClick={handleDeleteActiveStep}
+                className={`w-full flex items-center justify-center gap-1.5 font-semibold text-xs py-1.5 px-3 rounded-lg border transition ${
+                  isDarkMode
+                    ? 'bg-slate-800 hover:bg-rose-900/50 text-rose-300 border-rose-800'
+                    : 'bg-white hover:bg-rose-50 text-rose-600 border-rose-300'
+                }`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{text.discardStep}</span>
               </button>
             </div>
           ) : !isCapturingScreen ? null : (
@@ -1861,6 +1904,21 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
                 <Camera className="w-4 h-4 text-emerald-500" />
                 <span>{text.snapFullFrame}</span>
               </button>
+              {project.steps.length > 0 && (
+                <button
+                  type="button"
+                  data-testid="undo-last-step"
+                  onClick={handleUndoLastStep}
+                  className={`col-span-2 flex items-center justify-center gap-1.5 font-semibold text-xs py-1.5 px-3 rounded-lg border transition ${
+                    isDarkMode
+                      ? 'bg-slate-800 hover:bg-rose-900/50 text-rose-300 border-rose-800'
+                      : 'bg-white hover:bg-rose-50 text-rose-600 border-rose-300'
+                  }`}
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>{text.undoLastStep} ({project.steps.length})</span>
+                </button>
+              )}
             </div>
           )}
         </div>

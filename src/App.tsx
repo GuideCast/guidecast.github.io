@@ -65,6 +65,7 @@ import {
   InteractiveBoxEditor,
   computeDefaultCursorPos,
 } from './components/common/InteractiveBoxEditor';
+import { SectionsEditor } from './components/editor/SectionsEditor';
 import { AiAndPrivacyModal } from './components/editor/AiAndPrivacyModal';
 import { UpdateBanner, InstallButton } from './components/common/PwaControls';
 import { WelcomeTourModal } from './components/onboarding/WelcomeTourModal';
@@ -1842,6 +1843,16 @@ export default function App() {
                   </details>
                 </div>
 
+                {/* Sections: rename, move, add */}
+                <SectionsEditor
+                  steps={activeProject.steps}
+                  uiLang={uiLang}
+                  onChangeSteps={(steps) => {
+                    setActiveProject({ ...activeProject, steps });
+                    updateProject(activeProject.id, { steps });
+                  }}
+                />
+
                 {/* Split long guide into lessons */}
                 <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 shadow-sm">
                   <div className="flex items-center justify-between mb-2">
@@ -2683,8 +2694,8 @@ function StepEditorPanel({
           />
           <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">
             {uiLang === 'en'
-              ? 'Tip: put a button name between <b> and </b> to make it bold.'
-              : 'Совет: название кнопки между <b> и </b> станет жирным.'}
+              ? 'Tips: Enter starts a new line. Put a button name between <b> and </b> to make it bold. Text in `backticks` becomes a snippet the student can click to copy.'
+              : 'Советы: Enter начинает новую строку. Название кнопки между <b> и </b> станет жирным. Текст в `обратных кавычках` станет фрагментом, который студент копирует кликом.'}
           </p>
 
           {/* Voice dictation */}
@@ -3198,7 +3209,7 @@ function LivePlayerPreview({
             {s.act}
           </span>
           <p
-            className="text-sm font-medium text-slate-800 dark:text-slate-100"
+            className="text-sm font-medium text-slate-800 dark:text-slate-100 whitespace-pre-line"
             dangerouslySetInnerHTML={{
               __html: (lang === 'en' ? s.en || s.ru : s.ru || s.en) || '',
             }}
