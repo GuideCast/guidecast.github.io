@@ -179,6 +179,10 @@ const translations = {
     discardStep: 'Discard this step',
     undoLastStep: 'Undo last step',
     undoLastStepMsg: 'Last step removed. Steps left: {n}',
+    quickCapture: 'Capture Screen',
+    quickNext: 'Next Step',
+    quickReset: 'Reset last',
+    quickResetTitle: 'Remove the last captured screenshot (e.g. after a double click)',
     importedFromClipboard: 'Image imported from clipboard/file (Step #{n})',
     importError: 'Error importing image',
     quickComment: 'Quick Step Details',
@@ -288,6 +292,10 @@ const translations = {
     discardStep: 'Отменить этот шаг',
     undoLastStep: 'Убрать последний шаг',
     undoLastStepMsg: 'Последний шаг убран. Осталось шагов: {n}',
+    quickCapture: 'Снять экран',
+    quickNext: 'Следующий шаг',
+    quickReset: 'Сбросить',
+    quickResetTitle: 'Убрать последний снимок (например, после случайного двойного нажатия)',
     importedFromClipboard: 'Скриншот импортирован из буфера/файла (Шаг #{n})',
     importError: 'Ошибка импорта изображения',
     quickComment: 'Быстрый комментарий',
@@ -595,7 +603,7 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
     try {
       if (!pipCollapsed) {
         pipSavedRectRef.current = { w: win.outerWidth, h: win.outerHeight, x: win.screenX, y: win.screenY };
-        const w = 360;
+        const w = 440;
         const h = 150;
         win.resizeTo(w, h);
         win.document.body.style.overflow = 'hidden'; // no scrollbars on the small bar
@@ -1134,6 +1142,47 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
     }
   };
 
+  // --- Quick capture (collapsed bar): save the whole frame as a step and stay on the live stream ---
+  // No highlight is drawn here; boxes are set later in the editor. A short lock ignores an accidental double click.
+  const quickBusyRef = useRef(false);
+  const handleQuickCapture = async () => {
+    if (quickBusyRef.current || !isCapturingScreen) return;
+    quickBusyRef.current = true;
+    try {
+      const blob = await captureCurrentVideoFrame();
+      const proj = projectRef.current;
+      const asset = await addScreenshot(proj.id, blob, `shot_quick_${Date.now()}.png`);
+      const initialBox: BoxRect = { x: 15, y: 15, w: 70, h: 70 };
+      const newStep: GuideStep = {
+        id: generateId(),
+        screenshotId: asset.id,
+        act: 'look',
+        box: initialBox,
+        cursorPos: computeDefaultCursorPos(initialBox),
+        ru: ACTION_DEFAULTS.ru.look.placeholder,
+        en: ACTION_DEFAULTS.en.look.placeholder,
+      };
+      await updateProject(proj.id, { steps: [...proj.steps, newStep] });
+      await onProjectUpdatedRef.current();
+    } catch (err) {
+      console.error('Quick capture failed:', err);
+      showBanner(text.captureErrorMsg);
+    } finally {
+      // keep the lock until React has re-rendered with the new step list
+      setTimeout(() => {
+        quickBusyRef.current = false;
+      }, 400);
+    }
+  };
+
+  // Collapsed bar: leave the frozen view and go back to the live stream
+  const handleBackToLive = () => {
+    setPipViewMode('live');
+    setActiveStepId(null);
+    setLiveTranscript('');
+    setDrawMode('shoot');
+  };
+
   // --- Item 1: Action Type Chip Click with trailing space & auto-focus ---
   const handleUpdateStepAction = async (newAct: ActionType) => {
     setActiveActionType(newAct);
@@ -1432,24 +1481,27 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
       {collapsed && (
         <div
           data-testid="pip-collapsed-bar"
-          className={`h-screen flex items-center justify-between gap-2 px-3 ${
+          className={`h-screen flex flex-col justify-center gap-2 px-3 select-none ${
             isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-800'
           }`}
         >
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-2">
             <span
               className={`inline-flex rounded-full h-3 w-3 shrink-0 ${
                 isFrozen ? 'bg-sky-400' : isCapturingScreen ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
               }`}
             />
-            <span className="text-xs font-bold truncate">
-              {text.stepsCount} {project.steps.length}
+            <span className="text-xs font-bold">{text.stepsCount}</span>
+            <span
+              data-testid="pip-collapsed-count"
+              className="text-lg leading-none font-extrabold tabular-nums text-emerald-600 dark:text-emerald-400"
+            >
+              {project.steps.length}
             </span>
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex-1" />
             <button
               onClick={handleTogglePipCollapse}
-              className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold flex items-center gap-1"
+              className="px-2.5 py-1.5 bg-slate-600 hover:bg-slate-500 text-white rounded text-xs font-bold flex items-center gap-1"
               title={text.expandRemote}
             >
               <Maximize2 className="w-3.5 h-3.5" />
@@ -1461,6 +1513,44 @@ export const LiveCaptureWorkspace: React.FC<LiveCaptureWorkspaceProps> = ({
               title={text.closeRemote}
             >
               <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            {isFrozen ? (
+              <button
+                type="button"
+                data-testid="pip-collapsed-next"
+                onClick={handleBackToLive}
+                className="flex-1 flex items-center justify-center gap-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs py-2 px-3 rounded-lg transition active:scale-95"
+              >
+                <span>{text.quickNext} →</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                data-testid="pip-collapsed-capture"
+                onClick={handleQuickCapture}
+                disabled={!isCapturingScreen}
+                className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs py-2 px-3 rounded-lg shadow transition active:scale-95"
+              >
+                <Camera className="w-4 h-4" />
+                <span>{text.quickCapture}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              data-testid="pip-collapsed-reset"
+              onClick={isFrozen ? handleDeleteActiveStep : handleUndoLastStep}
+              disabled={project.steps.length === 0}
+              title={text.quickResetTitle}
+              className={`flex items-center justify-center gap-1.5 disabled:opacity-40 font-semibold text-xs py-2 px-3 rounded-lg border transition ${
+                isDarkMode
+                  ? 'bg-slate-800 hover:bg-rose-900/50 text-rose-300 border-rose-800'
+                  : 'bg-white hover:bg-rose-50 text-rose-600 border-rose-300'
+              }`}
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>{text.quickReset}</span>
             </button>
           </div>
         </div>
